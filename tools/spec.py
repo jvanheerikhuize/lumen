@@ -31,12 +31,14 @@ STATUSES = {
 }
 ID_RE = re.compile(r"^(ASM|FCT|QST|REQ|SPC)-\d{4}$")
 
-# Specs describe *what*, never *with what*. Concrete stacks are bound at render time.
+# The entire epistemic corpus describes *what*, never *with what*. Concrete stacks live in TECH_STACK.md.
 STACK_TERMS = [
     "postgres", "postgresql", "mysql", "sqlite", "mongodb", "redis", "kafka", "rabbitmq",
     "react", "vue", "angular", "svelte", "django", "flask", "fastapi", "spring", "rails",
     "node.js", "nodejs", "typescript", "javascript", "python", "java", "golang",
     "docker", "kubernetes", "aws", "azure", "gcp", "graphql", "grpc", "json schema",
+    "next.js", "nextjs", "vite", "tailwind", "ffmpeg", "ffprobe", "anacrolix", "modernc",
+    "lucide", "hls.js", "go.mod", "package.json", "dockerfile",
 ]
 STACK_RE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(t) for t in STACK_TERMS) + r")(?![\w-])", re.I)
 
@@ -172,11 +174,11 @@ def check(records: dict[str, Record]) -> tuple[list[str], list[str]]:
             if r.status == "active" and open_questions(r, records):
                 err(r, f"spec blocked by open question(s) {open_questions(r, records)} cannot be active")
 
-        # 6. Tech-stack agnostic (specs and requirements describe *what*, never *with what*)
-        if r.prefix != "FCT":
-            hits = sorted({m.group(1).lower() for m in STACK_RE.finditer(r.title + "\n" + r.body)})
-            if hits:
-                warn(r, f"tech-stack term(s) {hits}; keep stack choices out of specs")
+        # 6. Tech-stack agnostic (the entire corpus describes *what*, never *with what*)
+        searchable = "\n".join([r.title, str(r.meta.get("evidence", "")), r.body])
+        hits = sorted({m.group(1).lower() for m in STACK_RE.finditer(searchable)})
+        if hits:
+            warn(r, f"tech-stack term(s) {hits}; keep stack choices out of corpus records")
 
     specs = [r for r in records.values() if r.prefix == "SPC"]
     try:

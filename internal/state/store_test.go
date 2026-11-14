@@ -134,3 +134,74 @@ func TestSQLiteStoreConcurrentHouseholdSync(t *testing.T) {
 		t.Fatalf("expected both favorite channels to be preserved, got %v", state.FavoriteChannelIDs)
 	}
 }
+
+func TestSQLiteStoreHouseholdMemberProfileIsolation(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	s1, e1, e5 := 1, 1, 5
+	aliceWP := []WatchProgressEntry{
+		{
+			Media:     makeMedia("tt0903747", "Breaking Bad", "tv"),
+			Season:    &s1,
+			Episode:   &e1,
+			Position:  300,
+			Duration:  2800,
+			UpdatedAt: 1000,
+		},
+	}
+	bobWP := []WatchProgressEntry{
+		{
+			Media:     makeMedia("tt0903747", "Breaking Bad", "tv"),
+			Season:    &s1,
+			Episode:   &e5,
+			Position:  1900,
+			Duration:  2800,
+			UpdatedAt: 2000,
+		},
+	}
+	aliceFav := []string{"dw-news-en"}
+	bobFav := []string{"redbull-tv"}
+
+	_, err = store.UpdateState(context.Background(), StatePatch{
+		ProfileID:          "alice",
+		WatchProgress:      &aliceWP,
+		FavoriteChannelIDs: &aliceFav,
+	})
+	if err != nil {
+		t.Fatalf("UpdateState alice failed: %v", err)
+	}
+	_, err = store.UpdateState(context.Background(), StatePatch{
+		ProfileID:          "bob",
+		WatchProgress:      &bobWP,
+		FavoriteChannelIDs: &bobFav,
+	})
+	if err != nil {
+		t.Fatalf("UpdateState bob failed: %v", err)
+	}
+
+	aliceState, err := store.GetStateForProfile(context.Background(), "alice")
+	if err != nil {
+		t.Fatalf("GetStateForProfile alice failed: %v", err)
+	}
+	bobState, err := store.GetStateForProfile(context.Background(), "bob")
+	if err != nil {
+		t.Fatalf("GetStateForProfile bob failed: %v", err)
+	}
+
+	if len(aliceState.WatchProgress) != 1 || *aliceState.WatchProgress[0].Episode != 1 || aliceState.WatchProgress[0].Position != 300 {
+		t.Fatalf("expected alice to remain on Episode 1 at 300s, got %+v", aliceState.WatchProgress)
+	}
+	if len(bobState.WatchProgress) != 1 || *bobState.WatchProgress[0].Episode != 5 || bobState.WatchProgress[0].Position != 1900 {
+		t.Fatalf("expected bob to be on Episode 5 at 1900s, got %+v", bobState.WatchProgress)
+	}
+	if len(aliceState.FavoriteChannelIDs) != 1 || aliceState.FavoriteChannelIDs[0] != "dw-news-en" {
+		t.Fatalf("unexpected alice favorites: %v", aliceState.FavoriteChannelIDs)
+	}
+	if len(bobState.FavoriteChannelIDs) != 1 || bobState.FavoriteChannelIDs[0] != "redbull-tv" {
+		t.Fatalf("unexpected bob favorites: %v", bobState.FavoriteChannelIDs)
+	}
+}

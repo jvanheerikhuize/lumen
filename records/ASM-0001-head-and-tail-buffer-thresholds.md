@@ -10,4 +10,4 @@ promoted_to: FCT-0004
 If the peer-to-peer streaming engine prioritizes downloading the leading `2%` of the selected media file (clamped between `16 MB` and `64 MB`, roughly 2–3 minutes of video) alongside the final `4 MB` tail, container headers and index tables become available quickly enough for stream probing and playback to begin without full-file download.
 
 ## How we validate it
-Stream standard 720p and 1080p MP4 and MKV releases via the peer-to-peer engine and verify that `ffprobe` inspection and initial playback succeed as soon as the head and tail ranges complete.
+Stream standard 720p and 1080p MP4 and MKV releases via the peer-to-peer engine and verify that container stream inspection and initial playback succeed as soon as the head and tail ranges complete.

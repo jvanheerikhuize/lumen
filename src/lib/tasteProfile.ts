@@ -1,6 +1,17 @@
 import type { MediaItem } from '../types/index.ts';
 
 const STORAGE_KEY = 'screentime_taste_v1';
+const ACTIVE_PROFILE_KEY = 'lumen_active_profile_v1';
+
+function tasteStorageKey(): string {
+  if (typeof window === 'undefined') return STORAGE_KEY;
+  try {
+    const profileId = localStorage.getItem(ACTIVE_PROFILE_KEY) || 'default';
+    return profileId === 'default' ? STORAGE_KEY : `${STORAGE_KEY}:${profileId}`;
+  } catch {
+    return STORAGE_KEY;
+  }
+}
 
 export interface TasteProfile {
   /** Cumulative affinity score per genre name (e.g. { "Sci-Fi": 12, "Action": 8 }). */
@@ -39,7 +50,7 @@ export const POPULAR_TASTE_GENRES = [
 export function getTasteProfile(): TasteProfile {
   if (typeof window === 'undefined') return DEFAULT_PROFILE;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(tasteStorageKey());
     if (!raw) return DEFAULT_PROFILE;
     const parsed = JSON.parse(raw);
     return {
@@ -56,7 +67,7 @@ export function getTasteProfile(): TasteProfile {
 function saveTasteProfile(profile: TasteProfile): TasteProfile {
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+      localStorage.setItem(tasteStorageKey(), JSON.stringify(profile));
     } catch {
       // ignore storage quota errors
     }
@@ -160,7 +171,6 @@ export function pickRandomHero(
   const candidates: MediaItem[] = [];
 
   for (const row of rows) {
-    if (row.key === 'open-movies') continue;
     for (const item of row.items) {
       const id = String(item.id);
       if (seen.has(id)) continue;
@@ -216,7 +226,6 @@ export function personalizeRows<T extends { key: string; title: string; subtitle
   const seen = new Set<string>();
   const allItems: MediaItem[] = [];
   for (const r of rawRows) {
-    if (r.key === 'open-movies') continue;
     for (const item of r.items) {
       const id = String(item.id);
       if (seen.has(id)) continue;
@@ -242,9 +251,9 @@ export function personalizeRows<T extends { key: string; title: string; subtitle
         ? 'Tailored to what you watch and like — shuffled every visit'
         : 'Freshly shuffled top picks across movies & series';
 
-  // Shuffle items within each row (except airing-today and open-movies) so every visit feels fresh.
+  // Shuffle items within each row (except airing-today) so every visit feels fresh.
   const shuffledRows = rawRows.map((row) => {
-    if (row.key === 'open-movies' || row.key === 'airing-today') return row;
+    if (row.key === 'airing-today') return row;
     return {
       ...row,
       items: weightedShuffle(row.items, (item) => scoreMediaForUser(item, profile)),
@@ -252,7 +261,7 @@ export function personalizeRows<T extends { key: string; title: string; subtitle
   });
 
   // Sort genre rows so the user's favorite genres appear higher up.
-  const coreRows = shuffledRows.filter((r) => !r.key.startsWith('genre-') && r.key !== 'open-movies');
+  const coreRows = shuffledRows.filter((r) => !r.key.startsWith('genre-'));
   const genreRows = shuffledRows
     .filter((r) => r.key.startsWith('genre-'))
     .sort((a, b) => {
@@ -267,7 +276,6 @@ export function personalizeRows<T extends { key: string; title: string; subtitle
       };
       return scoreRow(b) - scoreRow(a);
     });
-  const openMoviesRow = shuffledRows.filter((r) => r.key === 'open-movies');
 
   const out: T[] = [];
 
@@ -289,6 +297,6 @@ export function personalizeRows<T extends { key: string; title: string; subtitle
     } as T);
   }
 
-  out.push(...coreRows, ...genreRows, ...openMoviesRow);
+  out.push(...coreRows, ...genreRows);
   return out;
 }

@@ -2,7 +2,7 @@
 id: REQ-0011
 title: Outbound URL, DNS resolution, and redirect-hop SSRF protection with bounded response reads
 status: active
-because: [FCT-0008, FCT-0012]
+because: [FCT-0008, FCT-0010]
 ---
 
 ## Statement

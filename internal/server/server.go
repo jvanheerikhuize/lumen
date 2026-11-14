@@ -238,15 +238,12 @@ func (s *Server) handleTrending(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	hasTmdb := os.Getenv("TMDB_API_KEY") != "" && len(tmdbTrending) > 0
-	var fallbackMovies, fallbackSeries, openMovies []types.MediaItem
+	var fallbackMovies, fallbackSeries []types.MediaItem
 	for _, m := range metadata.SampleMediaCatalog {
 		if m.MediaType == "movie" {
 			fallbackMovies = append(fallbackMovies, m)
 		} else if m.MediaType == "tv" {
 			fallbackSeries = append(fallbackSeries, m)
-		}
-		if strings.HasPrefix(m.IDString(), "sample-") {
-			openMovies = append(openMovies, m)
 		}
 	}
 
@@ -283,12 +280,6 @@ func (s *Server) handleTrending(w http.ResponseWriter, r *http.Request) {
 			Items:    truncateMedia(genreResults[i], rowLimit),
 		})
 	}
-	candidateRows = append(candidateRows, types.CatalogRow{
-		Key:      "open-movies",
-		Title:    "Open Movies",
-		Subtitle: "Blender Foundation originals with instant playback",
-		Items:    openMovies,
-	})
 
 	var rows []types.CatalogRow
 	for _, r := range candidateRows {
@@ -385,11 +376,6 @@ func (s *Server) handleMediaDetails(w http.ResponseWriter, r *http.Request) {
 	}()
 	wgInit.Wait()
 
-	staticStreams := streaming.GetStreamsForMedia(id)
-	if len(staticStreams) == 0 && details != nil && details.TmdbID != nil {
-		staticStreams = streaming.GetStreamsForMedia(*details.TmdbID)
-	}
-
 	var kitsuID *int
 	if details != nil && details.Anime != nil {
 		kitsuID = details.Anime.KitsuID
@@ -483,8 +469,7 @@ func (s *Server) handleMediaDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allCandidates := make([]types.StreamSource, 0, len(staticStreams)+len(stremioStreams)+len(prowlarrStreams)+len(jackettStreams))
-	allCandidates = append(allCandidates, staticStreams...)
+	allCandidates := make([]types.StreamSource, 0, len(stremioStreams)+len(prowlarrStreams)+len(jackettStreams))
 	allCandidates = append(allCandidates, stremioStreams...)
 	allCandidates = append(allCandidates, prowlarrStreams...)
 	allCandidates = append(allCandidates, jackettStreams...)
@@ -894,9 +879,11 @@ func (s *Server) handleLiveStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetState(w http.ResponseWriter, r *http.Request) {
-	st, err := s.stateStore.GetState(r.Context())
+	profileID := strings.TrimSpace(r.URL.Query().Get("profile"))
+	st, err := s.stateStore.GetStateForProfile(r.Context(), profileID)
 	if err != nil {
 		writeJSON(w, http.StatusOK, state.HouseholdState{
+			ProfileID:          profileID,
 			WatchProgress:      []state.WatchProgressEntry{},
 			FavoriteChannelIDs: []string{},
 		})
@@ -911,6 +898,9 @@ func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Failed to save state"})
 		return
+	}
+	if patch.ProfileID == "" {
+		patch.ProfileID = strings.TrimSpace(r.URL.Query().Get("profile"))
 	}
 	st, err := s.stateStore.UpdateState(r.Context(), patch)
 	if err != nil {

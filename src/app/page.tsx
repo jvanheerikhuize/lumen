@@ -14,7 +14,6 @@ import { CatalogBrowser } from '@/components/CatalogBrowser';
 import { PageHeader } from '@/components/PageHeader';
 import { MediaItem, StreamSource, LiveChannel } from '@/types';
 import { FEATURED_HERO, SAMPLE_MEDIA_CATALOG } from '@/lib/metadata/sampleCatalog';
-import { OPEN_SOURCE_STREAMS } from '@/lib/streaming/streamSources';
 import {
   getTasteProfile,
   isMediaLiked,
@@ -28,10 +27,15 @@ import {
   toggleLikedMedia,
 } from '@/lib/tasteProfile';
 import {
-  getMediaProgress,
+  DEFAULT_HOUSEHOLD_PROFILES,
+  getActiveProfileId,
+  getHouseholdProfiles,
   getWatchProgressList,
+  HouseholdMember,
   removeWatchProgress,
+  saveHouseholdProfiles,
   saveWatchProgress,
+  setActiveProfileId,
   syncStateFromServer,
   WatchProgressEntry,
 } from '@/lib/watchProgress';
@@ -49,6 +53,7 @@ interface HomeData {
 }
 
 const VALID_TABS = new Set<AppTab>(['home', 'movies', 'tv', 'anime', 'live']);
+const PROFILE_COLORS = ['rose', 'sky', 'emerald', 'amber', 'purple'] as const;
 
 /** Compute the next (season, episode) in a TV/anime series. */
 function findNextEpisode(
@@ -105,6 +110,8 @@ export default function Home() {
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [rawRows, setRawRows] = useState<CatalogRow[]>([]);
   const [home, setHome] = useState<HomeData | null>(null);
+  const [profiles, setProfiles] = useState<HouseholdMember[]>(DEFAULT_HOUSEHOLD_PROFILES);
+  const [activeProfileId, setActiveProfileState] = useState<string>('default');
   const [taste, setTaste] = useState<TasteProfile>({
     genreScores: {},
     favoriteGenres: [],
@@ -174,7 +181,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    syncStateFromServer().then((synced) => {
+    const initialProfileId = getActiveProfileId();
+    setActiveProfileState(initialProfileId);
+    setProfiles(getHouseholdProfiles());
+    syncStateFromServer(initialProfileId).then((synced) => {
+      setProfiles(synced.profiles);
+      setActiveProfileState(synced.profileId);
       setWatchProgress(synced.watchProgress);
     });
     fetch('/api/media/trending')
@@ -219,6 +231,43 @@ export default function Home() {
       });
     },
     [rawRows, home?.featured]
+  );
+
+  const handleSwitchProfile = useCallback(
+    (profileId: string) => {
+      const normalized = setActiveProfileId(profileId);
+      setActiveProfileState(normalized);
+      const nextTaste = getTasteProfile();
+      setTaste(nextTaste);
+      setWatchProgress(getWatchProgressList());
+      shuffleHome(nextTaste);
+      syncStateFromServer(normalized).then((synced) => {
+        setProfiles(synced.profiles);
+        setWatchProgress(synced.watchProgress);
+      });
+    },
+    [shuffleHome]
+  );
+
+  const handleAddProfile = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const id =
+        trimmed
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '') || `member-${Date.now()}`;
+      const color = PROFILE_COLORS[profiles.length % PROFILE_COLORS.length];
+      const nextProfiles = profiles.some((p) => p.id === id)
+        ? profiles
+        : [...profiles, { id, name: trimmed, color }];
+      const saved = saveHouseholdProfiles(nextProfiles);
+      setProfiles(saved);
+      handleSwitchProfile(id);
+    },
+    [profiles, handleSwitchProfile]
   );
 
   const handleToggleFavoriteGenre = (genre: string) => {
@@ -299,15 +348,8 @@ export default function Home() {
     [selectMedia]
   );
 
-  // Titles with bundled open streams play straight away; everything else opens its details.
   const handlePlayMedia = (media: MediaItem) => {
-    const sources = OPEN_SOURCE_STREAMS[String(media.id)] || OPEN_SOURCE_STREAMS[String(media.tmdbId)] || [];
-    const saved = getMediaProgress(media.id);
-    if (sources.length > 0) {
-      handlePlaySource(rankSources(sources), media, { startAt: saved?.position || 0 });
-    } else {
-      selectMedia(media);
-    }
+    selectMedia(media);
   };
 
   const handlePlayLiveChannel = (channel: LiveChannel, channelList?: LiveChannel[]) => {
@@ -396,6 +438,10 @@ export default function Home() {
         onSelectMedia={selectMedia}
         onSelectLiveChannel={(ch) => handlePlayLiveChannel(ch)}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        profiles={profiles}
+        activeProfileId={activeProfileId}
+        onSwitchProfile={handleSwitchProfile}
+        onAddProfile={handleAddProfile}
       />
 
       {activeTab === 'home' ? (
@@ -504,7 +550,7 @@ export default function Home() {
               />
             </>
           )}
-          {activeTab === 'live' && <LiveChannelsGrid onPlayChannel={handlePlayLiveChannel} />}
+          {activeTab === 'live' && <LiveChannelsGrid key={activeProfileId} onPlayChannel={handlePlayLiveChannel} />}
         </main>
       )}
 

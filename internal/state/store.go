@@ -40,8 +40,24 @@ type WatchProgressEntry struct {
 	Episodes  map[string]EpisodeProgress `json:"episodes,omitempty"`
 }
 
+// HouseholdMember represents a member profile in the household.
+type HouseholdMember struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+// DefaultHouseholdMembers are the initial household member profiles.
+var DefaultHouseholdMembers = []HouseholdMember{
+	{ID: "default", Name: "Member 1", Color: "rose"},
+	{ID: "member-2", Name: "Member 2", Color: "sky"},
+	{ID: "kids", Name: "Kids", Color: "emerald"},
+}
+
 // HouseholdState is the wire payload returned by GET/PUT /api/state.
 type HouseholdState struct {
+	ProfileID          string               `json:"profileId,omitempty"`
+	Profiles           []HouseholdMember    `json:"profiles,omitempty"`
 	WatchProgress      []WatchProgressEntry `json:"watchProgress"`
 	FavoriteChannelIDs []string             `json:"favoriteChannelIds"`
 	UpdatedAt          int64                `json:"updatedAt,omitempty"`
@@ -49,12 +65,21 @@ type HouseholdState struct {
 
 // StatePatch is the incoming request payload for PUT /api/state.
 type StatePatch struct {
+	ProfileID            string                `json:"profileId,omitempty"`
+	Profiles             *[]HouseholdMember    `json:"profiles,omitempty"`
 	WatchProgress        *[]WatchProgressEntry `json:"watchProgress,omitempty"`
 	FavoriteChannelIDs   *[]string             `json:"favoriteChannelIds,omitempty"`
 	RemovedMediaIDs      []string              `json:"removedMediaIds,omitempty"`
 	RemovedChannelIDs    []string              `json:"removedChannelIds,omitempty"`
 	ReplaceWatchProgress bool                  `json:"replaceWatchProgress,omitempty"`
 	ReplaceFavorites     bool                  `json:"replaceFavorites,omitempty"`
+}
+
+func normalizeProfileID(profileID string) string {
+	if profileID == "" {
+		return "default"
+	}
+	return profileID
 }
 
 func compactMediaItem(m types.MediaItem) types.MediaItem {
@@ -224,7 +249,7 @@ func MergeWatchProgressEntry(existing, incoming WatchProgressEntry) WatchProgres
 	return winner
 }
 
-// Store provides concurrency-safe household state persistence backed by embedded SQLite (`modernc.org/sqlite`).
+// Store provides concurrency-safe per-member household state persistence backed by embedded SQLite.
 type Store struct {
 	mu      sync.Mutex
 	db      *sql.DB
@@ -260,15 +285,25 @@ func NewStore(dataDir string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	schema := `
-	CREATE TABLE IF NOT EXISTS watch_progress (
-		media_id TEXT PRIMARY KEY,
+	CREATE TABLE IF NOT EXISTS profile_watch_progress (
+		profile_id TEXT NOT NULL DEFAULT 'default',
+		media_id TEXT NOT NULL,
 		updated_at INTEGER NOT NULL,
-		payload_json TEXT NOT NULL
+		payload_json TEXT NOT NULL,
+		PRIMARY KEY (profile_id, media_id)
 	);
-	CREATE TABLE IF NOT EXISTS favorite_channels (
-		channel_id TEXT PRIMARY KEY,
+	CREATE TABLE IF NOT EXISTS profile_favorite_channels (
+		profile_id TEXT NOT NULL DEFAULT 'default',
+		channel_id TEXT NOT NULL,
 		position_order INTEGER NOT NULL,
-		updated_at INTEGER NOT NULL
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (profile_id, channel_id)
+	);
+	CREATE TABLE IF NOT EXISTS household_profiles (
+		profile_id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		color TEXT NOT NULL,
+		position_order INTEGER NOT NULL
 	);
 	`
 	if _, err := db.Exec(schema); err != nil {
@@ -280,7 +315,8 @@ func NewStore(dataDir string) (*Store, error) {
 		db:      db,
 		dataDir: dataDir,
 	}
-	s.migrateLegacyJSONIfEmpty()
+	s.ensureDefaultProfiles()
+	s.migrateLegacyTablesAndJSONIfEmpty()
 	return s, nil
 }
 
@@ -292,13 +328,36 @@ func (s *Store) Close() error {
 	return nil
 }
 
-func (s *Store) migrateLegacyJSONIfEmpty() {
+func (s *Store) ensureDefaultProfiles() {
 	var count int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM watch_progress`).Scan(&count); err != nil || count > 0 {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM household_profiles`).Scan(&count); err != nil || count > 0 {
+		return
+	}
+	for idx, m := range DefaultHouseholdMembers {
+		_, _ = s.db.Exec(
+			`INSERT OR IGNORE INTO household_profiles (profile_id, name, color, position_order) VALUES (?, ?, ?, ?)`,
+			m.ID, m.Name, m.Color, idx,
+		)
+	}
+}
+
+func (s *Store) migrateLegacyTablesAndJSONIfEmpty() {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM profile_watch_progress`).Scan(&count); err != nil || count > 0 {
 		return
 	}
 	var favCount int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM favorite_channels`).Scan(&favCount); err != nil || favCount > 0 {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM profile_favorite_channels`).Scan(&favCount); err != nil || favCount > 0 {
+		return
+	}
+
+	// Migrate from older single-profile tables if they exist
+	_, _ = s.db.Exec(`INSERT OR IGNORE INTO profile_watch_progress (profile_id, media_id, updated_at, payload_json) SELECT 'default', media_id, updated_at, payload_json FROM watch_progress`)
+	_, _ = s.db.Exec(`INSERT OR IGNORE INTO profile_favorite_channels (profile_id, channel_id, position_order, updated_at) SELECT 'default', channel_id, position_order, updated_at FROM favorite_channels`)
+
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM profile_watch_progress`).Scan(&count)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM profile_favorite_channels`).Scan(&favCount)
+	if count > 0 || favCount > 0 {
 		return
 	}
 
@@ -315,22 +374,54 @@ func (s *Store) migrateLegacyJSONIfEmpty() {
 		return
 	}
 	_, _ = s.UpdateState(context.Background(), StatePatch{
+		ProfileID:          "default",
 		WatchProgress:      &legacy.WatchProgress,
 		FavoriteChannelIDs: &legacy.FavoriteChannelIDs,
 	})
 }
 
-// GetState reads the current HouseholdState from SQLite.
+// GetState reads the current HouseholdState for the default profile.
 func (s *Store) GetState(ctx context.Context) (HouseholdState, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.readStateLocked(ctx)
+	return s.GetStateForProfile(ctx, "default")
 }
 
-func (s *Store) readStateLocked(ctx context.Context) (HouseholdState, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT payload_json FROM watch_progress ORDER BY updated_at DESC LIMIT ?`, MaxProgressItems)
+// GetStateForProfile reads the HouseholdState for a specific household member profile.
+func (s *Store) GetStateForProfile(ctx context.Context, profileID string) (HouseholdState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readStateLocked(ctx, normalizeProfileID(profileID))
+}
+
+func (s *Store) readProfilesLocked(ctx context.Context) []HouseholdMember {
+	rows, err := s.db.QueryContext(ctx, `SELECT profile_id, name, color FROM household_profiles ORDER BY position_order ASC`)
 	if err != nil {
-		return HouseholdState{WatchProgress: []WatchProgressEntry{}, FavoriteChannelIDs: []string{}}, err
+		return DefaultHouseholdMembers
+	}
+	defer func() { _ = rows.Close() }()
+	var list []HouseholdMember
+	for rows.Next() {
+		var m HouseholdMember
+		if err := rows.Scan(&m.ID, &m.Name, &m.Color); err == nil && m.ID != "" {
+			list = append(list, m)
+		}
+	}
+	if len(list) == 0 {
+		return DefaultHouseholdMembers
+	}
+	return list
+}
+
+func (s *Store) readStateLocked(ctx context.Context, profileID string) (HouseholdState, error) {
+	profileID = normalizeProfileID(profileID)
+	profiles := s.readProfilesLocked(ctx)
+
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT payload_json FROM profile_watch_progress WHERE profile_id = ? ORDER BY updated_at DESC LIMIT ?`,
+		profileID, MaxProgressItems,
+	)
+	if err != nil {
+		return HouseholdState{ProfileID: profileID, Profiles: profiles, WatchProgress: []WatchProgressEntry{}, FavoriteChannelIDs: []string{}}, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -349,9 +440,13 @@ func (s *Store) readStateLocked(ctx context.Context) (HouseholdState, error) {
 		wp = []WatchProgressEntry{}
 	}
 
-	favRows, err := s.db.QueryContext(ctx, `SELECT channel_id FROM favorite_channels ORDER BY position_order ASC, updated_at DESC LIMIT ?`, MaxFavoriteChannels)
+	favRows, err := s.db.QueryContext(
+		ctx,
+		`SELECT channel_id FROM profile_favorite_channels WHERE profile_id = ? ORDER BY position_order ASC, updated_at DESC LIMIT ?`,
+		profileID, MaxFavoriteChannels,
+	)
 	if err != nil {
-		return HouseholdState{WatchProgress: wp, FavoriteChannelIDs: []string{}}, err
+		return HouseholdState{ProfileID: profileID, Profiles: profiles, WatchProgress: wp, FavoriteChannelIDs: []string{}}, err
 	}
 	defer func() { _ = favRows.Close() }()
 
@@ -367,16 +462,20 @@ func (s *Store) readStateLocked(ctx context.Context) (HouseholdState, error) {
 	}
 
 	return HouseholdState{
+		ProfileID:          profileID,
+		Profiles:           profiles,
 		WatchProgress:      wp,
 		FavoriteChannelIDs: favs,
 	}, nil
 }
 
-// UpdateState atomically merges or updates watchProgress and favoriteChannelIds in SQLite,
+// UpdateState atomically merges or updates watchProgress and favoriteChannelIds for a household member profile in SQLite,
 // preserving newer per-item timestamps across concurrent household devices.
 func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	profileID := normalizeProfileID(patch.ProfileID)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -386,15 +485,33 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 
 	now := time.Now().UnixMilli()
 
+	if patch.Profiles != nil && len(*patch.Profiles) > 0 {
+		_, _ = tx.ExecContext(ctx, `DELETE FROM household_profiles`)
+		for idx, p := range *patch.Profiles {
+			if p.ID == "" || p.Name == "" {
+				continue
+			}
+			color := p.Color
+			if color == "" {
+				color = "rose"
+			}
+			_, _ = tx.ExecContext(
+				ctx,
+				`INSERT INTO household_profiles (profile_id, name, color, position_order) VALUES (?, ?, ?, ?)`,
+				p.ID, p.Name, color, idx,
+			)
+		}
+	}
+
 	for _, rmID := range patch.RemovedMediaIDs {
 		if rmID != "" {
-			_, _ = tx.ExecContext(ctx, `DELETE FROM watch_progress WHERE media_id = ?`, rmID)
+			_, _ = tx.ExecContext(ctx, `DELETE FROM profile_watch_progress WHERE profile_id = ? AND media_id = ?`, profileID, rmID)
 		}
 	}
 
 	if patch.WatchProgress != nil {
 		if patch.ReplaceWatchProgress {
-			_, _ = tx.ExecContext(ctx, `DELETE FROM watch_progress`)
+			_, _ = tx.ExecContext(ctx, `DELETE FROM profile_watch_progress WHERE profile_id = ?`, profileID)
 		}
 		incomingList := *patch.WatchProgress
 		if len(incomingList) > MaxProgressItems {
@@ -407,7 +524,7 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 			}
 			// Auto-remove finished movies (>= 94% watched)
 			if item.Media.MediaType == "movie" && item.Duration > 0 && float64(item.Position)/float64(item.Duration) >= 0.94 {
-				_, _ = tx.ExecContext(ctx, `DELETE FROM watch_progress WHERE media_id = ?`, mediaID)
+				_, _ = tx.ExecContext(ctx, `DELETE FROM profile_watch_progress WHERE profile_id = ? AND media_id = ?`, profileID, mediaID)
 				continue
 			}
 			if item.UpdatedAt <= 0 {
@@ -415,7 +532,11 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 			}
 
 			var existingRaw string
-			err := tx.QueryRowContext(ctx, `SELECT payload_json FROM watch_progress WHERE media_id = ?`, mediaID).Scan(&existingRaw)
+			err := tx.QueryRowContext(
+				ctx,
+				`SELECT payload_json FROM profile_watch_progress WHERE profile_id = ? AND media_id = ?`,
+				profileID, mediaID,
+			).Scan(&existingRaw)
 			merged := item
 			merged.Media = compactMediaItem(merged.Media)
 			if err == nil && existingRaw != "" {
@@ -430,35 +551,35 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 				continue
 			}
 			_, err = tx.ExecContext(ctx, `
-				INSERT INTO watch_progress (media_id, updated_at, payload_json)
-				VALUES (?, ?, ?)
-				ON CONFLICT(media_id) DO UPDATE SET
+				INSERT INTO profile_watch_progress (profile_id, media_id, updated_at, payload_json)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(profile_id, media_id) DO UPDATE SET
 					updated_at = excluded.updated_at,
 					payload_json = excluded.payload_json
-			`, mediaID, merged.UpdatedAt, string(payloadBytes))
+			`, profileID, mediaID, merged.UpdatedAt, string(payloadBytes))
 			if err != nil {
 				return HouseholdState{}, err
 			}
 		}
 
-		// Cap table at MaxProgressItems (40)
+		// Cap table for this profile at MaxProgressItems (40)
 		_, _ = tx.ExecContext(ctx, `
-			DELETE FROM watch_progress
-			WHERE media_id NOT IN (
-				SELECT media_id FROM watch_progress ORDER BY updated_at DESC LIMIT ?
+			DELETE FROM profile_watch_progress
+			WHERE profile_id = ? AND media_id NOT IN (
+				SELECT media_id FROM profile_watch_progress WHERE profile_id = ? ORDER BY updated_at DESC LIMIT ?
 			)
-		`, MaxProgressItems)
+		`, profileID, profileID, MaxProgressItems)
 	}
 
 	for _, rmCh := range patch.RemovedChannelIDs {
 		if rmCh != "" {
-			_, _ = tx.ExecContext(ctx, `DELETE FROM favorite_channels WHERE channel_id = ?`, rmCh)
+			_, _ = tx.ExecContext(ctx, `DELETE FROM profile_favorite_channels WHERE profile_id = ? AND channel_id = ?`, profileID, rmCh)
 		}
 	}
 
 	if patch.FavoriteChannelIDs != nil {
 		if patch.ReplaceFavorites {
-			_, _ = tx.ExecContext(ctx, `DELETE FROM favorite_channels`)
+			_, _ = tx.ExecContext(ctx, `DELETE FROM profile_favorite_channels WHERE profile_id = ?`, profileID)
 		}
 		favList := *patch.FavoriteChannelIDs
 		seen := make(map[string]bool)
@@ -473,9 +594,13 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 			cleanFavs = cleanFavs[:MaxFavoriteChannels]
 		}
 
-		// Also preserve existing favorite channels unless explicitly removed or ReplaceFavorites is set
+		// Also preserve existing favorite channels for this profile unless explicitly removed or ReplaceFavorites is set
 		if !patch.ReplaceFavorites {
-			rows, err := tx.QueryContext(ctx, `SELECT channel_id FROM favorite_channels ORDER BY position_order ASC`)
+			rows, err := tx.QueryContext(
+				ctx,
+				`SELECT channel_id FROM profile_favorite_channels WHERE profile_id = ? ORDER BY position_order ASC`,
+				profileID,
+			)
 			if err == nil {
 				var existingFavs []string
 				for rows.Next() {
@@ -493,12 +618,12 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 			}
 		}
 
-		_, _ = tx.ExecContext(ctx, `DELETE FROM favorite_channels`)
+		_, _ = tx.ExecContext(ctx, `DELETE FROM profile_favorite_channels WHERE profile_id = ?`, profileID)
 		for idx, chID := range cleanFavs {
 			_, _ = tx.ExecContext(ctx, `
-				INSERT INTO favorite_channels (channel_id, position_order, updated_at)
-				VALUES (?, ?, ?)
-			`, chID, idx, now)
+				INSERT INTO profile_favorite_channels (profile_id, channel_id, position_order, updated_at)
+				VALUES (?, ?, ?, ?)
+			`, profileID, chID, idx, now)
 		}
 	}
 
@@ -506,15 +631,16 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 		return HouseholdState{}, err
 	}
 
-	state, err := s.readStateLocked(ctx)
+	state, err := s.readStateLocked(ctx, profileID)
 	if err != nil {
 		return HouseholdState{}, err
 	}
 	state.UpdatedAt = now
 
-	// Write JSON mirror file for compatibility/inspection
-	if rawMirror, err := json.Marshal(state); err == nil {
-		_ = os.WriteFile(filepath.Join(s.dataDir, "state.json"), rawMirror, 0o644)
+	if profileID == "default" {
+		if rawMirror, err := json.Marshal(state); err == nil {
+			_ = os.WriteFile(filepath.Join(s.dataDir, "state.json"), rawMirror, 0o644)
+		}
 	}
 
 	return state, nil

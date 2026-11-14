@@ -187,9 +187,6 @@ func PickRandomHero(rows []types.CatalogRow, profile TasteProfile, excludeID str
 	seen := make(map[string]bool)
 	var candidates []types.MediaItem
 	for _, row := range rows {
-		if row.Key == "open-movies" {
-			continue
-		}
 		for _, item := range row.Items {
 			id := item.IDString()
 			if seen[id] {
@@ -263,9 +260,6 @@ func PersonalizeRows(rawRows []types.CatalogRow, profile TasteProfile) []types.C
 	seen := make(map[string]bool)
 	var allItems []types.MediaItem
 	for _, r := range rawRows {
-		if r.Key == "open-movies" {
-			continue
-		}
 		for _, item := range r.Items {
 			id := item.IDString()
 			if seen[id] {
@@ -317,7 +311,7 @@ func PersonalizeRows(rawRows []types.CatalogRow, profile TasteProfile) []types.C
 
 	shuffledRows := make([]types.CatalogRow, len(rawRows))
 	for i, row := range rawRows {
-		if row.Key == "open-movies" || row.Key == "airing-today" {
+		if row.Key == "airing-today" {
 			shuffledRows[i] = row
 			continue
 		}
@@ -328,11 +322,9 @@ func PersonalizeRows(rawRows []types.CatalogRow, profile TasteProfile) []types.C
 		shuffledRows[i] = cp
 	}
 
-	var coreRows, genreRows, openMoviesRow []types.CatalogRow
+	var coreRows, genreRows []types.CatalogRow
 	for _, r := range shuffledRows {
-		if r.Key == "open-movies" {
-			openMoviesRow = append(openMoviesRow, r)
-		} else if len(r.Key) >= 6 && r.Key[:6] == "genre-" {
+		if len(r.Key) >= 6 && r.Key[:6] == "genre-" {
 			genreRows = append(genreRows, r)
 		} else {
 			coreRows = append(coreRows, r)
@@ -387,6 +379,5 @@ func PersonalizeRows(rawRows []types.CatalogRow, profile TasteProfile) []types.C
 	}
 	out = append(out, coreRows...)
 	out = append(out, genreRows...)
-	out = append(out, openMoviesRow...)
 	return out
 }

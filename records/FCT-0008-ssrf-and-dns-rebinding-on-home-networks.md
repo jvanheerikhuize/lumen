@@ -2,7 +2,7 @@
 id: FCT-0008
 title: Server-side fetching of user-supplied URLs exposes the host network to SSRF and DNS rebinding if unchecked
 status: active
-evidence: "Verified by security unit tests in src/__tests__/security.test.ts covering IPv4/IPv6 loopback, RFC1918 private ranges, link-local metadata endpoints (169.254.169.254), IPv4-mapped IPv6 addresses, and HTTP 30x redirect hops."
+evidence: "Verified by automated outbound network security tests covering IPv4/IPv6 loopback, RFC1918 private ranges, link-local metadata endpoints (169.254.169.254), IPv4-mapped IPv6 addresses, and HTTP 30x redirect hops."
 ---
 
 ## Statement

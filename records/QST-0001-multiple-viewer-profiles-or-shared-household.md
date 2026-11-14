@@ -1,10 +1,13 @@
 ---
 id: QST-0001
-title: Should a future rebuild support multiple household viewer profiles or keep a single shared household state?
+title: Should household members each have their own isolated state or share a single household state?
 status: answered
 blocks: [REQ-0008]
-answered_by: FCT-0011
+answered_by: FCT-0009
 ---
 
 ## Question
-Currently, watch progress, favorite live channels, and taste profiles represent a single shared household state (`40` watch progress entries, `200` favorite channels). To preserve Lumen's zero-account, zero-prompt launch experience across living-room TVs, laptops, and tablets, the system intentionally maintains a single shared household state synchronized via atomic per-item timestamped upserts (`FCT-0011`) rather than requiring a viewer profile picker on startup.
+Should different members in a household share a single global watch history and favorites list, or should each household member have their own isolated state?
+
+## Answer
+Different members in the household each have their own isolated state (`FCT-0009`). Every household member profile maintains its own separate watch progress (`Continue Watching` up to `40` entries), per-episode resume timestamps, pinned favorite live channels (up to `200` entries), and personalized genre/liked taste profile, while still launching immediately into the active member profile with zero login credentials or cloud accounts.

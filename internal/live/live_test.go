@@ -111,3 +111,27 @@ func TestREQ0010_ServeLiveProxyRewritesManifestAndSetsCORS(t *testing.T) {
 		t.Fatalf("expected Access-Control-Allow-Origin: *")
 	}
 }
+
+func TestCuratedLiveChannelsHaveCountryAttribution(t *testing.T) {
+	if len(LiveChannels) == 0 {
+		t.Fatalf("expected curated LiveChannels to be non-empty")
+	}
+	wantCode := map[string]string{
+		"dw-news-en":   "DE",
+		"nasa-tv":      "US",
+		"france24-en":  "FR",
+		"nhk-world":    "JP",
+		"trt-world":    "TR",
+		"redbull-tv":   "",
+		"cgtv-doc":     "",
+	}
+	for _, ch := range LiveChannels {
+		if ch.Country == "" {
+			t.Fatalf("channel %s is missing Country", ch.ID)
+		}
+		if want, ok := wantCode[ch.ID]; ok && ch.CountryCode != want {
+			t.Fatalf("channel %s expected CountryCode=%q, got %q", ch.ID, want, ch.CountryCode)
+		}
+	}
+}
+

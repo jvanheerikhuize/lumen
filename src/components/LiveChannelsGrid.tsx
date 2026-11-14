@@ -85,7 +85,7 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
       .filter((c) =>
         category === 'Favorites'
           ? favSet.has(c.id)
-          : country === ALL || regionKey(c) === country || (country !== INTL && c.source === 'curated')
+          : country === ALL || regionKey(c) === country
       )
       .filter((c) => category === 'All' || category === 'Favorites' || c.category === category)
       .filter((c) => !q || c.name.toLowerCase().includes(q) || c.country.toLowerCase().includes(q))

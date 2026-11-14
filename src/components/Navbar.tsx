@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, Settings2, Film, Tv, Loader2, X } from 'lucide-react';
+import { Search, Settings2, Film, Tv, Loader2, X, Check, Plus, Users } from 'lucide-react';
 import { LiveChannel, MediaItem } from '@/types';
 import { Logo } from '@/components/Logo';
+import { HouseholdMember } from '@/lib/watchProgress';
 
 export type AppTab = 'home' | 'movies' | 'tv' | 'anime' | 'live';
 
@@ -13,7 +14,19 @@ interface NavbarProps {
   onSelectMedia: (media: MediaItem) => void;
   onSelectLiveChannel?: (channel: LiveChannel) => void;
   onOpenSettingsModal: () => void;
+  profiles?: HouseholdMember[];
+  activeProfileId?: string;
+  onSwitchProfile?: (profileId: string) => void;
+  onAddProfile?: (name: string) => void;
 }
+
+const PROFILE_BADGE_CLASSES: Record<string, string> = {
+  rose: 'bg-rose-500/20 text-rose-300 ring-rose-500/40',
+  sky: 'bg-sky-500/20 text-sky-300 ring-sky-500/40',
+  emerald: 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/40',
+  amber: 'bg-amber-500/20 text-amber-300 ring-amber-500/40',
+  purple: 'bg-purple-500/20 text-purple-300 ring-purple-500/40',
+};
 
 const TABS: { key: AppTab; label: string }[] = [
   { key: 'home', label: 'Home' },
@@ -29,6 +42,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectMedia,
   onSelectLiveChannel,
   onOpenSettingsModal,
+  profiles = [],
+  activeProfileId = 'default',
+  onSwitchProfile,
+  onAddProfile,
 }) => {
   const [scrolled, setScrolled] = useState(false);
   const [query, setQuery] = useState('');
@@ -36,8 +53,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [channels, setChannels] = useState<LiveChannel[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
   const [failedPosters, setFailedPosters] = useState<Record<string, boolean>>({});
   const searchRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
 
@@ -68,10 +88,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Close the results when clicking elsewhere.
+  // Close the results and profile menu when clicking elsewhere.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setOpen(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileMenuOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -285,6 +306,97 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
           </div>
+
+          {profiles.length > 0 && onSwitchProfile && (
+            <div ref={profileRef} className="relative">
+              {(() => {
+                const activeMember = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+                const badgeClass = PROFILE_BADGE_CLASSES[activeMember.color] || PROFILE_BADGE_CLASSES.rose;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setProfileMenuOpen((v) => !v)}
+                    title={`Household member: ${activeMember.name}`}
+                    aria-label={`Switch household member (${activeMember.name})`}
+                    aria-expanded={profileMenuOpen}
+                    className="inline-flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full bg-white/[0.06] hover:bg-white/12 ring-1 ring-inset ring-white/10 text-xs font-medium text-zinc-200 hover:text-white transition-colors"
+                  >
+                    <span className={`w-6 h-6 rounded-full ring-1 flex items-center justify-center text-[11px] font-bold uppercase ${badgeClass}`}>
+                      {activeMember.name.slice(0, 1)}
+                    </span>
+                    <span className="hidden sm:inline max-w-[5.5rem] truncate">{activeMember.name}</span>
+                  </button>
+                );
+              })()}
+
+              {profileMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-60 rounded-2xl bg-zinc-900/95 backdrop-blur-xl ring-1 ring-white/10 shadow-2xl shadow-black/60 p-2 text-xs z-50">
+                  <div className="px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-white/[0.06] mb-1">
+                    <Users className="w-3.5 h-3.5 text-rose-400" />
+                    Who’s watching?
+                  </div>
+                  <div className="space-y-0.5">
+                    {profiles.map((member) => {
+                      const active = member.id === activeProfileId;
+                      const badgeClass = PROFILE_BADGE_CLASSES[member.color] || PROFILE_BADGE_CLASSES.rose;
+                      return (
+                        <button
+                          key={member.id}
+                          type="button"
+                          onClick={() => {
+                            onSwitchProfile(member.id);
+                            setProfileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-left transition-colors ${
+                            active ? 'bg-white/10 text-white' : 'text-zinc-300 hover:bg-white/[0.06] hover:text-white'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5 min-w-0">
+                            <span className={`w-6 h-6 rounded-full ring-1 flex items-center justify-center text-[11px] font-bold uppercase shrink-0 ${badgeClass}`}>
+                              {member.name.slice(0, 1)}
+                            </span>
+                            <span className="truncate font-medium">{member.name}</span>
+                          </span>
+                          {active && <Check className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {onAddProfile && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const trimmed = newProfileName.trim();
+                        if (!trimmed) return;
+                        onAddProfile(trimmed);
+                        setNewProfileName('');
+                        setProfileMenuOpen(false);
+                      }}
+                      className="mt-2 pt-2 border-t border-white/[0.06] flex items-center gap-1.5"
+                    >
+                      <input
+                        type="text"
+                        value={newProfileName}
+                        onChange={(e) => setNewProfileName(e.target.value)}
+                        placeholder="Add member…"
+                        aria-label="New household member name"
+                        maxLength={24}
+                        className="flex-1 min-w-0 bg-white/[0.06] ring-1 ring-inset ring-white/10 focus:ring-white/25 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 outline-none"
+                      />
+                      <button
+                        type="submit"
+                        title="Add household member"
+                        aria-label="Add household member"
+                        className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 ring-1 ring-inset ring-rose-500/30 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={onOpenSettingsModal}

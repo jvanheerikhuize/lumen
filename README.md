@@ -20,12 +20,13 @@ No accounts, cloud logins, or mandatory API keys required.
 
 - **Movies & Series** from [Cinemeta](https://v3-cinemeta.strem.io) with genre/year filters, IMDb ratings, and full season/episode guides. Optional [TMDB](https://www.themoviedb.org/) integration when `TMDB_API_KEY` is provided.
 - **Anime** from [AniList](https://anilist.co) (trending, seasonal, popular, and top-rated), automatically cross-referenced via [Fribb/anime-lists](https://github.com/Fribb/anime-lists) to Kitsu and IMDb IDs for episode streams and subtitles.
-- **Personalized & Fresh Every Open:** Randomized hero banner that never repeats recently shown titles, automatic genre taste learning, interactive genre filter chips, **"Picked for You"** & **"Your Liked Titles"** rows, **"Continue Watching"** with per-episode resume memory, **"Up Next"** auto-advance, and atomic multi-device LAN state sync (`/api/state` backed by embedded SQLite WAL).
+- **Personalized & Per-Member Household Profiles:** Switch or add household members (`Alice`, `Bob`, `Kids`, etc.) right from the navigation bar—each member gets their own isolated **"Continue Watching"** row, per-episode resume memory, pinned live channels, and **"Picked for You"** / **"Your Liked Titles"** taste recommendations, synchronized across LAN devices via `/api/state?profile=<id>`.
 - **What's On Today:** "New episodes today" row and live series status (*"Returning series · Next: S2 · E5"*) powered by [TVmaze](https://www.tvmaze.com).
-- **Live TV:** ~1,700 free-to-air channels from [Free-TV/IPTV](https://github.com/Free-TV/IPTV) plus curated international news/sports feeds, with category/country/favorite filters, background batch on-air verification, and a built-in CORS HLS relay (`/api/live/proxy`).
-- **Smart Torrent Streaming (`anacrolix/torrent`):**
+- **Live TV:** ~1,700 free-to-air channels from [Free-TV/IPTV](https://github.com/Free-TV/IPTV) plus curated public broadcasters, with strict per-country ISO filtering, category/favorite filters, background batch on-air verification, and a built-in CORS HLS relay (`/api/live/proxy`).
+- **Smart Torrent Streaming (`anacrolix/torrent`) & 4-Layer Playback Timeline:**
   - Queries Stremio addons ([Torrentio](https://torrentio.strem.fun) and MediaFusion by default; add custom manifests in Settings) plus optional self-hosted **Prowlarr** and **Jackett** indexers.
   - Prioritizes first and last pieces (`moov` atom / MKV `Cues`) plus a dynamic read-ahead window for fast startup and seeking, ranks sources by browser streamability, and automatically fails over if a swarm stalls.
+  - Renders a **4-layer playback timeline scrubber** (played progress, in-memory decoded browser buffer, on-disk verified swarm piece ranges with a `100% Downloaded` completion badge, and unloaded regions) plus a hover seek-readiness preview and interactive stream status legend.
   - Announces to a daily-refreshed list of live [public trackers](https://github.com/ngosang/trackerslist) and evicts idle swarms after 20 minutes.
 - **Plays Almost Anything in Any Browser:** `ffprobe` inspects every stream before playback; H.264/AAC MP4/WebM streams play directly (`206 Partial Content`), while MKV/AVI containers are remuxed (`-c:v copy`) and HEVC/AV1/AC3/DTS streams are transcoded on the fly to fragmented MP4 (`fMP4`) with full seek support and optional hardware acceleration (`LUMEN_HWACCEL`).
 - **Embedded & External Subtitles:** Extracts embedded MKV subtitle tracks via `ffmpeg` and fetches external subtitles from OpenSubtitles, with live `±0.5s` sync adjustment (`G`/`H`).
@@ -162,18 +163,18 @@ npm run build       # Build Vite SPA bundle into web/dist
 
 ---
 
-## Domain Specifications (`ASDLC Meta-Specs`)
+## Domain Specifications (`ASDLC Meta-Specs`) & Technology Stack
 
-Lumen's domain knowledge is extracted into **35 atomic, tech-stack-agnostic epistemic records** in [`records/`](records/) following [ASDLC Meta-Specs](https://github.com/jvanheerikhuize/asdlc-meta-specs) (`Facts → Requirements → Specs`, with `Assumptions` and `Questions` explicitly tracked and promoted as empirical evidence is gathered).
+Lumen's domain knowledge is extracted into **34 atomic, 100% tech-stack-free epistemic records** in [`records/`](records/) following [ASDLC Meta-Specs](https://github.com/jvanheerikhuize/asdlc-meta-specs) (`Facts → Requirements → Specs`, with `Assumptions` and `Questions` explicitly tracked and promoted as empirical evidence is gathered). Concrete implementation and technology stack choices live separately in [`TECH_STACK.md`](TECH_STACK.md).
 
 Explore the interactive **Dashboard, Tasks, Record Graph, and Capture Workspace** on GitHub Pages: **[https://jvanheerikhuize.github.io/lumen/](https://jvanheerikhuize.github.io/lumen/)**
 
 | Spec | Tier | Readiness | Scope |
 | :--- | :--- | :--- | :--- |
-| [`SPC-0001`](records/SPC-0001-core-catalog-and-adaptive-playback-skeleton.md) | `skeleton` | **100%** | Keyless catalogs (`REQ-0001`), stream ranking (`REQ-0002`), P2P head/tail piece priority (`REQ-0003`), 3-tier adaptive playback (`REQ-0004`), stall failover (`REQ-0005`) |
+| [`SPC-0001`](records/SPC-0001-core-catalog-and-adaptive-playback-skeleton.md) | `skeleton` | **100%** | Keyless catalogs (`REQ-0001`), stream ranking (`REQ-0002`), P2P head/tail piece priority & downloaded range telemetry (`REQ-0003`), 3-tier adaptive playback (`REQ-0004`), stall failover & 4-layer timeline (`REQ-0005`) |
 | [`SPC-0002`](records/SPC-0002-embedded-and-external-subtitle-pipeline.md) | `feature` | **100%** | Embedded & external subtitle pipeline with WebVTT normalization and `±0.5s` sync (`REQ-0006`) |
-| [`SPC-0003`](records/SPC-0003-taste-personalization-and-household-progress.md) | `feature` | **33%** | Randomized hero & genre taste learning (`REQ-0007`), watch progress & atomic LAN state sync (`REQ-0008`), live broadcast schedules (`REQ-0009`) |
-| [`SPC-0004`](records/SPC-0004-free-to-air-live-television-and-hls-relay.md) | `feature` | **100%** | ~1,700 free-to-air live TV channels, batch on-air probing, and HLS CORS manifest relay (`REQ-0010`) |
+| [`SPC-0003`](records/SPC-0003-taste-personalization-and-household-progress.md) | `feature` | **33%** | Randomized hero & genre taste learning (`REQ-0007`), per-member household profiles & atomic LAN state sync (`REQ-0008`), live broadcast schedules (`REQ-0009`) |
+| [`SPC-0004`](records/SPC-0004-free-to-air-live-television-and-hls-relay.md) | `feature` | **100%** | ~1,700 free-to-air live TV channels, strict per-country ISO filtering, batch on-air probing, and HLS CORS manifest relay (`REQ-0010`) |
 | [`SPC-0005`](records/SPC-0005-network-boundary-protection-and-indexers.md) | `feature` | **100%** | Outbound SSRF & socket-level DNS-rebinding protection (`REQ-0011`) and custom addons + Prowlarr/Jackett indexers (`REQ-0012`) |
 
 ```bash

@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import type { MediaItem } from '../src/types/index.ts';
 import {
   getEpisodeProgress,
+  getFavoriteChannelIds,
   getMediaProgress,
   getWatchProgressList,
   removeWatchProgress,
   saveWatchProgress,
+  setActiveProfileId,
+  toggleFavoriteChannel,
 } from '../src/lib/watchProgress.ts';
+import { getTasteProfile, toggleFavoriteGenre } from '../src/lib/tasteProfile.ts';
 
 function mockLocalStorage() {
   const store = new Map<string, string>();
@@ -70,3 +74,33 @@ test('saveWatchProgress remembers last-watched season/episode and per-episode pr
   removeWatchProgress('tt200');
   assert.equal(getWatchProgressList().length, 0);
 });
+
+test('household members each maintain isolated watch progress, favorite channels, and taste profiles', () => {
+  mockLocalStorage();
+  const show = makeMedia('tt300', 'Arcane', 'tv');
+
+  setActiveProfileId('alice');
+  saveWatchProgress(show, 500, 2400, 1, 1);
+  toggleFavoriteChannel('dw-news-en');
+  toggleFavoriteGenre('Sci-Fi');
+
+  setActiveProfileId('bob');
+  saveWatchProgress(show, 1900, 2400, 2, 4);
+  toggleFavoriteChannel('nhk-world');
+  toggleFavoriteGenre('Comedy');
+
+  setActiveProfileId('alice');
+  assert.equal(getMediaProgress('tt300')?.season, 1);
+  assert.equal(getMediaProgress('tt300')?.episode, 1);
+  assert.equal(getMediaProgress('tt300')?.position, 500);
+  assert.deepEqual(getFavoriteChannelIds(), ['dw-news-en']);
+  assert.deepEqual(getTasteProfile().favoriteGenres, ['Sci-Fi']);
+
+  setActiveProfileId('bob');
+  assert.equal(getMediaProgress('tt300')?.season, 2);
+  assert.equal(getMediaProgress('tt300')?.episode, 4);
+  assert.equal(getMediaProgress('tt300')?.position, 1900);
+  assert.deepEqual(getFavoriteChannelIds(), ['nhk-world']);
+  assert.deepEqual(getTasteProfile().favoriteGenres, ['Comedy']);
+});
+
