@@ -11,3 +11,8 @@ coverage
 .DS_Store
 .env*
 !.env.example
+dist
+site
+records
+tools
+deploy
