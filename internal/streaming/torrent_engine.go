@@ -28,19 +28,20 @@ const (
 
 // BufferStatus represents the pre-buffer readiness state returned by /api/stream/prepare.
 type BufferStatus struct {
-	State         string                  `json:"state"` // "connecting" | "buffering" | "ready" | "error"
-	Error         string                  `json:"error,omitempty"`
-	FileName      string                  `json:"fileName,omitempty"`
-	FileSize      int64                   `json:"fileSize"`
-	HeadBytes     int64                   `json:"headBytes"`
-	HeadTarget    int64                   `json:"headTarget"`
-	TailReady     bool                    `json:"tailReady"`
-	AheadBytes    int64                   `json:"aheadBytes"`
-	Complete      bool                    `json:"complete"`
-	Peers         int                     `json:"peers"`
-	DownloadSpeed float64                 `json:"downloadSpeed"`
-	Progress      float64                 `json:"progress"`
-	Files         []types.TorrentFileMeta `json:"files,omitempty"`
+	State            string                  `json:"state"` // "connecting" | "buffering" | "ready" | "error"
+	Error            string                  `json:"error,omitempty"`
+	FileName         string                  `json:"fileName,omitempty"`
+	FileSize         int64                   `json:"fileSize"`
+	HeadBytes        int64                   `json:"headBytes"`
+	HeadTarget       int64                   `json:"headTarget"`
+	TailReady        bool                    `json:"tailReady"`
+	AheadBytes       int64                   `json:"aheadBytes"`
+	Complete         bool                    `json:"complete"`
+	Peers            int                     `json:"peers"`
+	DownloadSpeed    float64                 `json:"downloadSpeed"`
+	Progress         float64                 `json:"progress"`
+	DownloadedRanges [][2]float64            `json:"downloadedRanges,omitempty"`
+	Files            []types.TorrentFileMeta `json:"files,omitempty"`
 }
 
 // PieceRange represents an inclusive range of BitTorrent piece indices [From, To].
@@ -111,6 +112,44 @@ func ComputeBufferMetrics(
 		}
 	}
 
+	var downloadedRanges [][2]float64
+	if totalPieces > 0 {
+		const maxBuckets = 100
+		bucketCount := min(totalPieces, maxBuckets)
+		inSpan := false
+		spanStart := 0
+		for b := 0; b < bucketCount; b++ {
+			pStart := first + (b*totalPieces)/bucketCount
+			pEnd := first + ((b+1)*totalPieces)/bucketCount - 1
+			if pEnd < pStart {
+				pEnd = pStart
+			}
+			anyDone := false
+			for p := pStart; p <= pEnd; p++ {
+				if pieceDone(p) {
+					anyDone = true
+					break
+				}
+			}
+			if anyDone && !inSpan {
+				inSpan = true
+				spanStart = b
+			} else if !anyDone && inSpan {
+				inSpan = false
+				downloadedRanges = append(downloadedRanges, [2]float64{
+					math.Round((float64(spanStart)/float64(bucketCount))*1000) / 1000,
+					math.Round((float64(b)/float64(bucketCount))*1000) / 1000,
+				})
+			}
+		}
+		if inSpan {
+			downloadedRanges = append(downloadedRanges, [2]float64{
+				math.Round((float64(spanStart)/float64(bucketCount))*1000) / 1000,
+				1.0,
+			})
+		}
+	}
+
 	aheadBytes := headBytes
 	from := max(int64(0), min(fromByte, fileLength-1))
 	if from > 0 {
@@ -137,17 +176,18 @@ func ComputeBufferMetrics(
 	}
 
 	return BufferStatus{
-		State:         state,
-		FileName:      fileName,
-		FileSize:      fileLength,
-		HeadBytes:     headBytes,
-		HeadTarget:    headTarget,
-		TailReady:     tailReady,
-		AheadBytes:    aheadBytes,
-		Complete:      complete,
-		Peers:         peers,
-		DownloadSpeed: downloadSpeed,
-		Progress:      float64(completed) / float64(totalPieces),
+		State:            state,
+		FileName:         fileName,
+		FileSize:         fileLength,
+		HeadBytes:        headBytes,
+		HeadTarget:       headTarget,
+		TailReady:        tailReady,
+		AheadBytes:       aheadBytes,
+		Complete:         complete,
+		Peers:            peers,
+		DownloadSpeed:    downloadSpeed,
+		Progress:         float64(completed) / float64(totalPieces),
+		DownloadedRanges: downloadedRanges,
 	}
 }
 

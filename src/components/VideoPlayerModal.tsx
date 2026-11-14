@@ -64,6 +64,8 @@ interface PrepareStatus {
   complete: boolean;
   peers: number;
   downloadSpeed: number;
+  progress?: number;
+  downloadedRanges?: [number, number][];
   files: { index: number; name: string; length: number }[];
 }
 
@@ -164,6 +166,9 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   const [currentTime, setCurrentTime] = useState(initialStartTime);
   const [mediaDuration, setMediaDuration] = useState(0);
   const [bufferedEnd, setBufferedEnd] = useState(0);
+  const [bufferedRanges, setBufferedRanges] = useState<[number, number][]>([]);
+  const [hoverSeek, setHoverSeek] = useState<{ ratio: number; time: number } | null>(null);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
@@ -244,6 +249,8 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     setOffset(0);
     setKnownDuration(0);
     setMediaDuration(0);
+    setBufferedEnd(0);
+    setBufferedRanges([]);
     setPrepare(null);
     prepareRef.current = null;
     setReencoding(false);
@@ -787,10 +794,11 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           if (activeSub) adjustSubtitleDelay(0.5);
           break;
         case 'escape':
-          if (subMenuOpen || sourceMenuOpen || audioMenuOpen) {
+          if (subMenuOpen || sourceMenuOpen || audioMenuOpen || legendOpen) {
             setSubMenuOpen(false);
             setSourceMenuOpen(false);
             setAudioMenuOpen(false);
+            setLegendOpen(false);
           } else if (!document.fullscreenElement) {
             onClose();
           }
@@ -801,7 +809,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [
     togglePlay, toggleFullscreen, togglePip, toggleMute, revealControls, onClose,
-    subtitles, activeSub, subMenuOpen, sourceMenuOpen, audioMenuOpen,
+    subtitles, activeSub, subMenuOpen, sourceMenuOpen, audioMenuOpen, legendOpen,
     seekTo, chooseSubtitle, adjustSubtitleDelay, isLive, sources.length, sourceIndex, selectSource,
   ]);
 
@@ -821,7 +829,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     statusText = isLive ? 'Connecting…' : `Buffering… ${Math.min(Math.floor(ahead), bufferTarget)} / ${bufferTarget}s`;
   }
   const canSkipSource = sources.length > sourceIndex + 1;
-  const anyMenuOpen = subMenuOpen || sourceMenuOpen || audioMenuOpen;
+  const anyMenuOpen = subMenuOpen || sourceMenuOpen || audioMenuOpen || legendOpen;
   const controlsVisible = showControls || !isPlaying || buffering || anyMenuOpen;
   const showSubButton = Boolean(subtitleQuery?.imdbId) || embeddedSubs.length > 0;
 
@@ -855,7 +863,14 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           const v = e.currentTarget;
           const now = base + v.currentTime;
           setCurrentTime(now);
-          if (v.buffered.length) setBufferedEnd(base + v.buffered.end(v.buffered.length - 1));
+          if (v.buffered.length) {
+            setBufferedEnd(base + v.buffered.end(v.buffered.length - 1));
+            const ranges: [number, number][] = [];
+            for (let i = 0; i < v.buffered.length; i++) {
+              ranges.push([base + v.buffered.start(i), base + v.buffered.end(i)]);
+            }
+            setBufferedRanges(ranges);
+          }
           if (!isLive && onWatchProgress && now > 5 && Date.now() - lastProgressReportAt.current >= 4000) {
             lastProgressReportAt.current = Date.now();
             onWatchProgress(now, duration);
@@ -863,7 +878,14 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
         }}
         onProgress={(e) => {
           const v = e.currentTarget;
-          if (v.buffered.length) setBufferedEnd(base + v.buffered.end(v.buffered.length - 1));
+          if (v.buffered.length) {
+            setBufferedEnd(base + v.buffered.end(v.buffered.length - 1));
+            const ranges: [number, number][] = [];
+            for (let i = 0; i < v.buffered.length; i++) {
+              ranges.push([base + v.buffered.start(i), base + v.buffered.end(i)]);
+            }
+            setBufferedRanges(ranges);
+          }
         }}
         onWaiting={onWaiting}
         onSeeking={() => {
@@ -1007,23 +1029,143 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
         }`}
       >
         {!isLive && (
-          <div className="relative h-4 flex items-center">
-            <div className="absolute inset-x-0 h-1 rounded-full bg-white/15" />
-            {duration > 0 && (
-              <div
-                className="absolute h-1 rounded-full bg-white/35"
-                style={{ left: `${(base / duration) * 100}%`, width: `${Math.max(0, Math.min(100, ((bufferedEnd - base) / duration) * 100))}%` }}
-              />
-            )}
+          <div
+            className="group/scrubber relative h-6 flex items-center"
+            onMouseMove={(e) => {
+              if (!duration) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+              setHoverSeek({ ratio, time: ratio * duration });
+            }}
+            onMouseLeave={() => setHoverSeek(null)}
+          >
+            {/* Hover timestamp + seek readiness tooltip */}
+            {hoverSeek && duration > 0 && (() => {
+              const t = hoverSeek.time;
+              const delta = Math.round(t - currentTime);
+              const deltaLabel =
+                Math.abs(delta) < 2
+                  ? 'now'
+                  : `${delta > 0 ? '+' : '−'}${formatTime(Math.abs(delta))}`;
+              const inBrowserBuffer =
+                bufferedRanges.some(([start, end]) => t >= start - 0.5 && t <= end + 0.5) ||
+                (t >= base && t <= bufferedEnd);
+              const inDiskCache =
+                prepare?.complete ||
+                Boolean(prepare?.downloadedRanges?.some(([s, e]) => hoverSeek.ratio >= s && hoverSeek.ratio <= e));
+              const clampedPct = Math.max(6, Math.min(94, hoverSeek.ratio * 100));
+              return (
+                <div
+                  style={{ left: `${clampedPct}%` }}
+                  className="pointer-events-none absolute -top-12 -translate-x-1/2 z-30 flex flex-col items-center"
+                >
+                  <div className="px-2.5 py-1 rounded-lg bg-zinc-950/95 border border-white/15 shadow-xl backdrop-blur-md whitespace-nowrap text-center">
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-mono font-semibold text-white">
+                      <span>{formatTime(t)}</span>
+                      <span className="text-[10px] font-normal text-zinc-400">({deltaLabel})</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-1 text-[10px] font-medium">
+                      {inBrowserBuffer ? (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                          <span className="text-zinc-200">In memory · instant seek</span>
+                        </>
+                      ) : inDiskCache ? (
+                        <>
+                          <span className={`w-1.5 h-1.5 rounded-full ${prepare?.complete ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+                          <span className={prepare?.complete ? 'text-emerald-300' : 'text-sky-300'}>
+                            {prepare?.complete ? '100% downloaded on disk' : 'Downloaded on disk'}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                          <span className="text-zinc-400">
+                            {mode === 'transcode' ? 'Converts from here on seek' : 'Streams from here on seek'}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Visual 4-layer timeline track */}
+            <div
+              className={`pointer-events-none absolute inset-x-0 h-1.5 group-hover/scrubber:h-2.5 rounded-full overflow-hidden transition-all duration-150 ${
+                prepare?.complete ? 'bg-emerald-950/60 ring-1 ring-emerald-400/35' : 'bg-white/15'
+              }`}
+            >
+              {/* Layer 1: Torrent pieces downloaded on disk (sky while downloading, emerald when 100% complete) */}
+              {isTorrent &&
+                (prepare?.complete ? (
+                  <div className="absolute inset-y-0 left-0 w-full bg-emerald-400/35 transition-all duration-300" />
+                ) : (
+                  (prepare?.downloadedRanges || []).map(([startFrac, endFrac], idx) => (
+                    <div
+                      key={`dl-${idx}`}
+                      className="absolute inset-y-0 bg-sky-400/30 transition-all duration-300"
+                      style={{
+                        left: `${Math.max(0, Math.min(100, startFrac * 100))}%`,
+                        width: `${Math.max(0.5, Math.min(100, (endFrac - startFrac) * 100))}%`,
+                      }}
+                    />
+                  ))
+                ))}
+
+              {/* Layer 2: Browser decoded <video>.buffered memory ranges */}
+              {duration > 0 &&
+                (bufferedRanges.length > 0 ? (
+                  bufferedRanges.map(([startSec, endSec], idx) => {
+                    const leftPct = Math.max(0, Math.min(100, (startSec / duration) * 100));
+                    const widthPct = Math.max(0, Math.min(100 - leftPct, ((endSec - startSec) / duration) * 100));
+                    return (
+                      <div
+                        key={`buf-${idx}`}
+                        className="absolute inset-y-0 bg-white/55 transition-all duration-150"
+                        style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                      />
+                    );
+                  })
+                ) : bufferedEnd > base ? (
+                  <div
+                    className="absolute inset-y-0 bg-white/55 transition-all duration-150"
+                    style={{
+                      left: `${(base / duration) * 100}%`,
+                      width: `${Math.max(0, Math.min(100, ((bufferedEnd - base) / duration) * 100))}%`,
+                    }}
+                  />
+                ) : null)}
+
+              {/* Hover ghost highlight */}
+              {hoverSeek && duration > 0 && (
+                <div
+                  className="absolute inset-y-0 w-0.5 bg-white/80"
+                  style={{ left: `${hoverSeek.ratio * 100}%` }}
+                />
+              )}
+
+              {/* Layer 3: Played progress fill */}
+              {duration > 0 && (
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-rose-500 to-orange-400 rounded-l-full"
+                  style={{ width: `${Math.max(0, Math.min(100, (currentTime / duration) * 100))}%` }}
+                />
+              )}
+            </div>
+
+            {/* Accessible native range input */}
             <input
               type="range"
               min={0}
               max={duration || 0}
               step={1}
               value={Math.min(currentTime, duration || 0)}
+              aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
               onChange={(e) => seekTo(parseFloat(e.target.value))}
               aria-label="Seek"
-              className="relative w-full h-1 appearance-none bg-transparent cursor-pointer accent-rose-500"
+              className="lumen-scrubber relative z-10"
             />
           </div>
         )}
@@ -1122,6 +1264,130 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
             {isLive ? 'LIVE' : `${formatTime(currentTime)} / ${formatTime(duration)}`}
           </span>
 
+          {/* Stream & Download Status Pill + Interactive Timeline Legend */}
+          {!isLive && (
+            <div className="relative hidden md:block">
+              <button
+                type="button"
+                onClick={() => {
+                  setLegendOpen((o) => !o);
+                  setSubMenuOpen(false);
+                  setSourceMenuOpen(false);
+                  setAudioMenuOpen(false);
+                }}
+                title="View timeline colors & stream details"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors border ${
+                  isTorrent && prepare?.complete
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35 hover:bg-emerald-500/25'
+                    : isTorrent
+                      ? 'bg-sky-500/15 text-sky-200 border-sky-500/30 hover:bg-sky-500/25'
+                      : 'bg-white/[0.06] text-zinc-300 border-white/10 hover:bg-white/10'
+                }`}
+              >
+                {isTorrent && prepare?.complete ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>100% Downloaded</span>
+                  </>
+                ) : isTorrent && prepare ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                    <span>
+                      {Math.min(99, Math.round((prepare.progress ?? 0) * 100))}% on disk
+                      {prepare.downloadSpeed > 0 ? ` · ${formatRate(prepare.downloadSpeed)}` : ''}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+                    <span>
+                      {mode === 'transcode' ? (reencoding ? 'Live Transcode' : 'Live Remux') : 'Direct Play'}
+                      {bufferedEnd > currentTime ? ` · +${Math.round(bufferedEnd - currentTime)}s buffered` : ''}
+                    </span>
+                  </>
+                )}
+              </button>
+
+              {legendOpen && (
+                <div className="absolute bottom-11 left-0 w-72 rounded-2xl bg-zinc-950/95 border border-white/15 shadow-2xl p-3.5 text-xs text-zinc-200 space-y-3 backdrop-blur-md z-30">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                    <span className="font-semibold text-white">Timeline & Stream Status</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-zinc-300">
+                      {mode === 'transcode' ? (reencoding ? 'FFmpeg H.264' : 'FFmpeg Remux') : 'Direct Play'}
+                    </span>
+                  </div>
+
+                  {/* Color key */}
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-1.5 rounded-full bg-gradient-to-r from-rose-500 to-orange-400 shrink-0" />
+                      <span className="text-zinc-300">
+                        <strong className="text-white">Played:</strong> Current playback position
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-1.5 rounded-full bg-white/60 shrink-0" />
+                      <span className="text-zinc-300">
+                        <strong className="text-white">In Memory:</strong> Decoded in browser (instant seek)
+                      </span>
+                    </div>
+                    {isTorrent && (
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-3 h-1.5 rounded-full shrink-0 ${
+                            prepare?.complete ? 'bg-emerald-400/70' : 'bg-sky-400/60'
+                          }`}
+                        />
+                        <span className="text-zinc-300">
+                          <strong className="text-white">On Disk:</strong>{' '}
+                          {prepare?.complete
+                            ? 'Entire file downloaded (100% cached)'
+                            : 'Torrent pieces saved locally'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-1.5 rounded-full bg-white/15 shrink-0" />
+                      <span className="text-zinc-400">
+                        <strong className="text-zinc-300">Unloaded:</strong> Streams on demand when seeked
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Live stats */}
+                  <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-zinc-500 block">Browser buffer</span>
+                      <span className="font-mono text-white">
+                        +{Math.max(0, Math.round(bufferedEnd - currentTime))}s ahead
+                      </span>
+                    </div>
+                    {isTorrent && prepare && (
+                      <>
+                        <div>
+                          <span className="text-zinc-500 block">Downloaded</span>
+                          <span className="font-mono text-white">
+                            {prepare.complete ? '100% (Complete)' : `${Math.round((prepare.progress ?? 0) * 100)}%`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block">Swarm speed</span>
+                          <span className="font-mono text-white">
+                            {prepare.complete ? 'Done' : formatRate(prepare.downloadSpeed)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block">Active peers</span>
+                          <span className="font-mono text-white">{prepare.peers} connected</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             {isTorrent && videoFiles.length > 1 && (
               <select
@@ -1168,6 +1434,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                     setAudioMenuOpen((o) => !o);
                     setSubMenuOpen(false);
                     setSourceMenuOpen(false);
+                    setLegendOpen(false);
                   }}
                   title="Audio track"
                   aria-label="Audio track"
@@ -1207,6 +1474,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                     setSourceMenuOpen((o) => !o);
                     setSubMenuOpen(false);
                     setAudioMenuOpen(false);
+                    setLegendOpen(false);
                   }}
                   title={isLive ? 'Switch channel (↑/↓)' : `Switch source (${sourceIndex + 1}/${sources.length})`}
                   aria-label={isLive ? 'Switch channel' : 'Switch source'}
@@ -1245,6 +1513,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                     setSubMenuOpen((o) => !o);
                     setSourceMenuOpen(false);
                     setAudioMenuOpen(false);
+                    setLegendOpen(false);
                   }}
                   title="Subtitles (C)"
                   aria-label="Subtitles"
