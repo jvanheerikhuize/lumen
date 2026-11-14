@@ -149,7 +149,29 @@ npm run dev         # Start Next.js dev server with hot reload
 npm run lint        # Run ESLint
 npm run typecheck   # Run TypeScript compiler checks (tsc --noEmit)
 npm test            # Run unit test suite (Node built-in test runner)
+npm run spec:check  # Validate ASDLC Meta-Specs record graph (--strict)
+npm run spec:render # Render stack-agnostic Markdown & Gherkin specs to dist/
 npm run build       # Build standalone production bundle
+```
+
+---
+
+## Domain Specifications (`ASDLC Meta-Specs`)
+
+Lumen's domain knowledge is extracted into **31 atomic, tech-stack-agnostic epistemic records** in [`records/`](records/) following [ASDLC Meta-Specs](https://github.com/jvanheerikhuize/asdlc-meta-specs) (`Facts → Requirements → Specs`, with open `Assumptions` and `Questions` explicitly tracked) so the system can be rebuilt in any technology stack:
+
+| Spec | Tier | Readiness | Scope |
+| :--- | :--- | :--- | :--- |
+| [`SPC-0001`](records/SPC-0001-core-catalog-and-adaptive-playback-skeleton.md) | `skeleton` | **100%** | Keyless catalogs (`REQ-0001`), stream ranking (`REQ-0002`), P2P head/tail piece priority (`REQ-0003`), 3-tier adaptive playback (`REQ-0004`), stall failover (`REQ-0005`) |
+| [`SPC-0002`](records/SPC-0002-embedded-and-external-subtitle-pipeline.md) | `feature` | **100%** | Embedded & external subtitle pipeline with WebVTT normalization and `±0.5s` sync (`REQ-0006`) |
+| [`SPC-0003`](records/SPC-0003-taste-personalization-and-household-progress.md) | `feature` | **33%** | Randomized hero & genre taste learning (`REQ-0007`), watch progress & LAN state sync (`REQ-0008`), live broadcast schedules (`REQ-0009`) |
+| [`SPC-0004`](records/SPC-0004-free-to-air-live-television-and-hls-relay.md) | `feature` | **100%** | ~1,700 free-to-air live TV channels, batch on-air probing, and HLS CORS manifest relay (`REQ-0010`) |
+| [`SPC-0005`](records/SPC-0005-network-boundary-protection-and-indexers.md) | `feature` | **100%** | Outbound SSRF/DNS-rebinding protection (`REQ-0011`) and custom addons + Prowlarr/Jackett indexers (`REQ-0012`) |
+
+```bash
+python3 tools/spec.py check --strict          # Validate links, epistemic gates, open questions, and stack-agnosticism
+python3 tools/spec.py impact FCT-0003         # Trace downstream requirements and topological spec rebuild order
+python3 tools/spec.py render --tier skeleton  # Render only the Walking Skeleton spec to dist/
 ```
 
 ---
