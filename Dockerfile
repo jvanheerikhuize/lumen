@@ -19,7 +19,7 @@ COPY web ./web
 COPY --from=web-builder /app/web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /app/lumen ./cmd/lumen
 
-FROM alpine:3.21 AS runner
+FROM alpine:3.24 AS runner
 WORKDIR /app
 
 RUN apk add --no-cache ca-certificates ffmpeg wget \
