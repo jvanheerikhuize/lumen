@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/jvanheerikhuize/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/jvanheerikhuize/lumen/actions/workflows/ci.yml)
 [![Docker](https://github.com/jvanheerikhuize/lumen/actions/workflows/docker.yml/badge.svg)](https://github.com/jvanheerikhuize/lumen/actions/workflows/docker.yml)
+[![Meta-Specs Pages](https://github.com/jvanheerikhuize/lumen/actions/workflows/pages.yml/badge.svg)](https://jvanheerikhuize.github.io/lumen/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-rose.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.24%2B-00ADD8.svg)](go.mod)
 
@@ -10,6 +11,8 @@
 Browse movies, TV series, and anime from free, keyless catalogs, watch 1,700+ free-to-air live TV channels, and stream torrents directly in your browser — compiled into a single Go binary with an embedded Vite/React 19 SPA, embedded SQLite state store, and on-the-fly `ffmpeg` conversion for MKV, HEVC/x265, AC3, EAC3, and DTS.
 
 No accounts, cloud logins, or mandatory API keys required.
+
+**Interactive ASDLC Meta-Specs & Record Graph (GitHub Pages):** **[https://jvanheerikhuize.github.io/lumen/](https://jvanheerikhuize.github.io/lumen/)**
 
 ---
 

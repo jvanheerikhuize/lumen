@@ -2,7 +2,8 @@
   "name": "lumen",
   "version": "0.2.0",
   "private": true,
-  "description": "Self-hosted streaming dashboard: free catalogs, anime, live TV and torrent streaming with on-the-fly conversion.",
+  "description": "Single-binary Go + React 19 self-hosted streaming dashboard: free catalogs, anime, live TV, and torrent streaming with on-the-fly ffmpeg conversion. Specs: https://jvanheerikhuize.github.io/lumen/",
+  "homepage": "https://jvanheerikhuize.github.io/lumen/",
   "license": "MIT",
   "repository": {
     "type": "git",
