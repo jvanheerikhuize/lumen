@@ -58,10 +58,19 @@ export function setPreferredSubtitleLang(lang: string) {
   }
 }
 
+const SPECIAL_LABELS: Record<string, string> = {
+  pob: 'Portuguese (Brazil)',
+  zht: 'Chinese (Traditional)',
+  zhs: 'Chinese (Simplified)',
+  spl: 'Spanish (Latin America)',
+};
+
 const langNames = typeof Intl !== 'undefined' && Intl.DisplayNames ? new Intl.DisplayNames(['en'], { type: 'language' }) : null;
 
 export function formatLang(code: string): string {
-  const norm = normalizeSubtitleLang(code);
+  const lower = (code || '').toLowerCase().trim();
+  if (SPECIAL_LABELS[lower]) return SPECIAL_LABELS[lower];
+  const norm = normalizeSubtitleLang(lower);
   if (!norm || norm === 'und') return 'Unknown';
   try {
     return langNames?.of(norm) || code.toUpperCase();

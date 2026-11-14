@@ -2,10 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Play, Star, Film, ChevronDown, Loader2, Users, HardDrive, CalendarClock, Heart } from 'lucide-react';
-import { MediaItem, StreamSource } from '@/types';
+import { MediaItem, ShowStatus, StreamSource } from '@/types';
 import { Modal } from './Modal';
 import { rankSources } from '@/lib/streaming/pickSource';
-import type { ShowStatus } from '@/lib/metadata/tvmaze';
 import { cleanAddonUrls, isDefaultAddonList } from '@/lib/scrapers/addonUrls';
 import { getEpisodeProgress, getMediaProgress } from '@/lib/watchProgress';
 

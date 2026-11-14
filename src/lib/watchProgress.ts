@@ -128,6 +128,7 @@ export function saveWatchProgress(
 
 export function removeWatchProgress(mediaId: string | number): WatchProgressEntry[] {
   const key = String(mediaId);
+  pendingRemovedMediaIds.add(key);
   const next = getWatchProgressList().filter(
     (e) => String(e.media.id) !== key && (!e.media.imdbId || e.media.imdbId !== key)
   );
@@ -149,6 +150,11 @@ export function getFavoriteChannelIds(): string[] {
 export function toggleFavoriteChannel(channelId: string): string[] {
   const current = getFavoriteChannelIds();
   const exists = current.includes(channelId);
+  if (exists) {
+    pendingRemovedChannelIds.add(channelId);
+  } else {
+    pendingRemovedChannelIds.delete(channelId);
+  }
   const next = exists ? current.filter((id) => id !== channelId) : [channelId, ...current];
   if (typeof window !== 'undefined') {
     try {
@@ -162,6 +168,8 @@ export function toggleFavoriteChannel(channelId: string): string[] {
 }
 
 let syncTimeout: ReturnType<typeof setTimeout> | null = null;
+const pendingRemovedMediaIds = new Set<string>();
+const pendingRemovedChannelIds = new Set<string>();
 
 /** Debounced background push of client watch progress & favorites to `/api/state` for LAN device sync. */
 export function pushStateToServer(): void {
@@ -171,10 +179,14 @@ export function pushStateToServer(): void {
     syncTimeout = null;
     const watchProgress = getWatchProgressList();
     const favoriteChannelIds = getFavoriteChannelIds();
+    const removedMediaIds = Array.from(pendingRemovedMediaIds);
+    const removedChannelIds = Array.from(pendingRemovedChannelIds);
+    pendingRemovedMediaIds.clear();
+    pendingRemovedChannelIds.clear();
     fetch('/api/state', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ watchProgress, favoriteChannelIds }),
+      body: JSON.stringify({ watchProgress, favoriteChannelIds, removedMediaIds, removedChannelIds }),
     }).catch(() => {});
   }, 400);
 }

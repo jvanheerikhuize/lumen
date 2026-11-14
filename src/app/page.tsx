@@ -13,7 +13,7 @@ import { LiveChannelsGrid } from '@/components/LiveChannelsGrid';
 import { CatalogBrowser } from '@/components/CatalogBrowser';
 import { PageHeader } from '@/components/PageHeader';
 import { MediaItem, StreamSource, LiveChannel } from '@/types';
-import { FEATURED_HERO, SAMPLE_MEDIA_CATALOG } from '@/lib/metadata/tmdb';
+import { FEATURED_HERO, SAMPLE_MEDIA_CATALOG } from '@/lib/metadata/sampleCatalog';
 import { OPEN_SOURCE_STREAMS } from '@/lib/streaming/streamSources';
 import {
   getTasteProfile,

@@ -9,7 +9,7 @@ services:
         published: "3000"
         protocol: tcp
     environment:
-      NODE_ENV: production
+      PORT: "3000"
       LUMEN_DATA_DIR: /app/data
       LUMEN_HWACCEL: none
       LUMEN_ALLOW_PRIVATE_ADDONS: "0"

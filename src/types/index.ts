@@ -124,3 +124,16 @@ export interface UserSettings {
   jackettUrl?: string;
   jackettApiKey?: string;
 }
+
+export interface EpisodeRef {
+  season: number;
+  episode: number;
+  name: string;
+  airstamp?: string;
+}
+
+export interface ShowStatus {
+  status: string;
+  network?: string;
+  nextEpisode?: EpisodeRef;
+}

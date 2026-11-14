@@ -4,6 +4,9 @@
 :root {
   --background: #08080b;
   --foreground: #ededed;
+  --font-geist-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-bricolage: 'Bricolage Grotesque', 'Geist', system-ui, sans-serif;
   color-scheme: dark;
 }
 

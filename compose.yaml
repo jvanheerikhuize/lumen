@@ -7,7 +7,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
+      - PORT=3000
       - TMDB_API_KEY=${TMDB_API_KEY:-}
       - PROWLARR_URL=${PROWLARR_URL:-}
       - PROWLARR_API_KEY=${PROWLARR_API_KEY:-}
@@ -19,8 +19,8 @@ services:
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 10s

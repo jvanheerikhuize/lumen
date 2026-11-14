@@ -1,6 +1,6 @@
 {
   "name": "lumen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Self-hosted streaming dashboard: free catalogs, anime, live TV and torrent streaming with on-the-fly conversion.",
   "license": "MIT",
@@ -12,34 +12,30 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
+    "dev": "vite",
+    "build": "vite build",
+    "start": "./bin/lumen",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.ts\"",
+    "test": "go test ./cmd/... ./internal/... ./web/... && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.ts\"",
     "spec:check": "python3 tools/spec.py check --strict",
     "spec:render": "python3 tools/spec.py render --format markdown && python3 tools/spec.py render --format gherkin",
     "spec:index": "python3 tools/spec.py index"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.12.1",
     "hls.js": "^1.7.4",
     "lucide-react": "^1.72.0",
-    "next": "16.4.6",
     "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "torrent-stream": "^1.2.1"
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^26",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/torrent-stream": "^0.0.9",
-    "eslint": "^10",
-    "eslint-config-next": "16.4.6",
+    "@vitejs/plugin-react": "^6.0.1",
     "tailwindcss": "^4.3.5",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^8.3.8"
   }
 }

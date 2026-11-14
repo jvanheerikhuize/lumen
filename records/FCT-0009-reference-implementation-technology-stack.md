@@ -1,8 +1,8 @@
 ---
 id: FCT-0009
-title: The reference implementation runs as a single-container Node.js 22+, Next.js 16, React 19, TypeScript 5, and FFmpeg stack
-status: active
-evidence: "Verified in package.json, next.config.ts, and Dockerfile: Next.js 16.4.6 (App Router, standalone output), React 19.3.1, TypeScript 5, Tailwind CSS 4, torrent-stream 1.2.1, hls.js 1.7.4, fast-xml-parser 5.12.1, lucide-react 1.72.0, Node.js >=22.18 (node:25-bookworm-slim in Docker) with system ffmpeg/ffprobe binaries and a JSON state store."
+title: The legacy reference implementation ran as a single-container Node.js 22+, Next.js 16, React 19, TypeScript 5, and FFmpeg stack
+status: deprecated
+evidence: "Superseded by FCT-0010 (Go 1.24+ single-binary appliance with embedded Vite/React 19 SPA, anacrolix/torrent, and modernc.org/sqlite). Historically verified in package.json, next.config.ts, and Dockerfile."
 ---
 
 ## Statement

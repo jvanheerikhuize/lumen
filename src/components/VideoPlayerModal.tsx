@@ -76,7 +76,7 @@ const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const START_BUFFER_SECONDS = 15;
 const MAX_BUFFER_SECONDS = 60;
 // Failover thresholds while a torrent is still preparing.
-const NO_PEERS_MS = 20_000;
+const NO_PEERS_MS = 25_000;
 const SLOW_CHECK_MS = 30_000;
 const MAX_PREPARE_MS = 90_000;
 const MAX_ETA_SECONDS = 90;
@@ -214,7 +214,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     mode === 'transcode'
       ? `/api/playback/transcode?${sourceQuery}&start=${offset.toFixed(2)}${selectedAudioIndex !== undefined ? `&audioStream=${selectedAudioIndex}` : ''}`
       : isLive && liveRelay && /^https?:\/\//i.test(directUrl)
-        ? `/api/live/proxy?u=${encodeURIComponent(directUrl)}`
+        ? `/api/live/proxy?url=${encodeURIComponent(directUrl)}`
         : directUrl;
 
   useEffect(() => {

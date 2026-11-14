@@ -5,6 +5,17 @@ All notable changes to **Lumen** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-14
+
+### Changed
+- **Single-binary Go appliance rewrite (`FCT-0010`):** Replaced the Next.js/Node.js runtime (`FCT-0009`) with a self-contained pure-Go (`CGO_ENABLED=0`, Go 1.24+) server (`cmd/lumen`, `internal/*`) embedding the compiled Vite 8 + React 19 + Tailwind CSS 4 SPA (`web/embed.go` via `//go:embed all:dist`).
+- **BitTorrent swarm engine (`anacrolix/torrent`):** Native Go swarm manager (`internal/streaming/torrent_engine.go`) with piece-level priority scheduling (`headTarget = clamp(2% of fileSize, 16 MB, 64 MB)`, `4 MB` tail for container `moov`/`Cues`, `32 MB` dynamic read-ahead window), HTTP `206 Partial Content` streaming, and 20-minute idle swarm eviction.
+- **Atomic SQLite household state sync (`FCT-0011`, promoted from `ASM-0004`):** Replaced whole-file `state.json` overwrite with an embedded pure-Go SQLite (`modernc.org/sqlite`) WAL database (`LUMEN_DATA_DIR/lumen.db`) performing transactional per-item `updatedAt` upserts and per-episode progress merges (with automatic migration from and mirroring to `state.json`).
+- **Multi-stage Alpine container (`Dockerfile`):** Compiles the Vite SPA and static Go binary into a minimal `alpine:3.21` + `ffmpeg` runtime image.
+
+### Security
+- **Socket-level DNS-rebinding & SSRF guard (`FCT-0012`):** `internal/netguard` verifies the resolved destination IP address inside `net.Dialer.Control` immediately prior to `connect(2)`, eliminating the time-of-check to time-of-use (TOCTOU) window between hostname resolution and socket connection across initial connections and manual redirect hops.
+
 ## [0.1.0] - 2026-11-14
 
 ### Added
@@ -15,10 +26,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Torrent streaming & on-the-fly conversion:** BitTorrent swarm engine with head/tail piece prioritization (`moov` atom first), HTTP range serving, `ffprobe` codec inspection, on-the-fly `ffmpeg` remuxing/transcoding to fragmented MP4 (`fMP4`), optional hardware acceleration (`LUMEN_HWACCEL`), and concurrent transcode limiting.
 - **In-player controls:** Source switcher, audio track switcher, embedded MKV subtitle extraction (`/api/subtitles/embedded`), OpenSubtitles SRT-to-WebVTT proxy with live `±0.5s` sync (`G`/`H`), playback speed (`0.5x–2x`), Picture-in-Picture, `navigator.mediaSession`, and mobile tap/double-tap gestures.
 - **Live TV:** ~1,700 free-to-air channels from Free-TV/IPTV + curated feeds with category/country/favorite (`★`) filters, batch on-air verification (`/api/live/status`), Prev/Next channel surfing, and automatic CORS HLS relay (`/api/live/proxy`).
-- **Docker, PWA & self-hosted ecosystem:** Standalone Next.js output, multi-arch `Dockerfile`, `compose.yaml`, `/api/health` endpoint, PWA manifest, and CasaOS / Unraid / Homepage templates.
-
-### Security & Reliability
-- SSRF protection (`guardedFetch`) across all upstream addon, indexer, live TV, and subtitle endpoints with bounded response readers (`readBoundedText`).
-- Canonical 40-char `infoHash` swarm keying (supporting both hex and base32 magnets), immediate episode `fileIndex` selection for season packs, and automatic temp cache cleanup.
-- Native `<dialog>` top-layer modal accessibility, keyboard-navigable poster cards, and URL history sync (`?tab=`, `?genre=`, `?media=`).
-- Reverse-proxy loopback port resolution (`LUMEN_INTERNAL_PORT` / `PORT`) for `ffmpeg` and `ffprobe`.
+- **Docker, PWA & self-hosted ecosystem:** Multi-arch `Dockerfile`, `compose.yaml`, `/api/health` endpoint, PWA manifest, and CasaOS / Unraid / Homepage templates.

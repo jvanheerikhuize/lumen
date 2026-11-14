@@ -1,0 +1,16 @@
+{
+  "name": "Lumen",
+  "short_name": "Lumen",
+  "description": "Movies, series, anime, and live TV streamed on demand.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08080b",
+  "theme_color": "#08080b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

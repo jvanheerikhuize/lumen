@@ -18,9 +18,13 @@
 /out/
 
 # production
+/bin/
 /build
+/data/
 /dist/
 /site/data/
+/web/dist/*
+!/web/dist/.gitkeep
 
 # misc
 .DS_Store

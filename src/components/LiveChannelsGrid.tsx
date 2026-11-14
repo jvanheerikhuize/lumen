@@ -110,7 +110,7 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
     () => shown.slice(0, limit).map((c) => c.streamUrl).filter((u) => !(u in status)),
     [shown, limit, status]
   );
-  const pendingKey = pending.slice(0, 60).join('|');
+  const pendingKey = pending.slice(0, 24).join('|');
   useEffect(() => {
     if (!pendingKey) return;
     let cancelled = false;
