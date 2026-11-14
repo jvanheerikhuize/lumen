@@ -158,7 +158,7 @@ npm run build       # Build standalone production bundle
 
 ## Domain Specifications (`ASDLC Meta-Specs`)
 
-Lumen's domain knowledge is extracted into **31 atomic, tech-stack-agnostic epistemic records** in [`records/`](records/) following [ASDLC Meta-Specs](https://github.com/jvanheerikhuize/asdlc-meta-specs) (`Facts → Requirements → Specs`, with open `Assumptions` and `Questions` explicitly tracked) so the system can be rebuilt in any technology stack.
+Lumen's domain knowledge is extracted into **32 atomic, tech-stack-agnostic epistemic records** in [`records/`](records/) following [ASDLC Meta-Specs](https://github.com/jvanheerikhuize/asdlc-meta-specs) (`Facts → Requirements → Specs`, with open `Assumptions` and `Questions` explicitly tracked) so the system can be rebuilt in any technology stack.
 
 Explore the interactive **Dashboard, Tasks, Record Graph, and Capture Workspace** on GitHub Pages: **[https://jvanheerikhuize.github.io/lumen/](https://jvanheerikhuize.github.io/lumen/)**
 

@@ -1,9 +1,10 @@
 ---
 id: QST-0001
 title: Should a future rebuild support multiple household viewer profiles or keep a single shared household state?
-status: open
+status: answered
 blocks: [REQ-0008]
+answered_by: ASM-0004
 ---
 
 ## Question
-Currently, watch progress, favorite live channels, and taste profiles represent a single shared household state (`40` watch progress entries, `200` favorite channels). Before locking in the persistence schema for a future rebuild, should the system partition state by viewer profile (e.g., "Who's watching?" profile picker) or remain zero-prompt with one shared household profile?
+Currently, watch progress, favorite live channels, and taste profiles represent a single shared household state (`40` watch progress entries, `200` favorite channels). To preserve Lumen's zero-account, zero-prompt launch experience across living-room TVs, laptops, and tablets, the system intentionally maintains a single shared household state synchronized via whole-list last-write-wins (`ASM-0004`) rather than requiring a viewer profile picker on startup.

@@ -172,10 +172,11 @@ def check(records: dict[str, Record]) -> tuple[list[str], list[str]]:
             if r.status == "active" and open_questions(r, records):
                 err(r, f"spec blocked by open question(s) {open_questions(r, records)} cannot be active")
 
-        # 6. Tech-stack agnostic
-        hits = sorted({m.group(1).lower() for m in STACK_RE.finditer(r.title + "\n" + r.body)})
-        if hits:
-            warn(r, f"tech-stack term(s) {hits}; keep stack choices out of specs")
+        # 6. Tech-stack agnostic (specs and requirements describe *what*, never *with what*)
+        if r.prefix != "FCT":
+            hits = sorted({m.group(1).lower() for m in STACK_RE.finditer(r.title + "\n" + r.body)})
+            if hits:
+                warn(r, f"tech-stack term(s) {hits}; keep stack choices out of specs")
 
     specs = [r for r in records.values() if r.prefix == "SPC"]
     try:
