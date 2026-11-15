@@ -2,7 +2,7 @@
 id: FCT-0007
 title: Public live television playlists mix offline feeds with cross-origin HLS manifests that require proxy URI rewriting
 status: active
-evidence: "Verified across ~1,700 Free-TV/IPTV channels and curated live feeds: browsers block cross-origin HLS playlists and segments lacking CORS headers, and relative URIs or EXT-X-KEY/EXT-X-MAP URIs inside proxied M3U8 manifests break unless rewritten to absolute proxy URLs."
+evidence: "Verified across ~1,700 Free-TV/IPTV channels with curated international broadcaster fallback: browsers block cross-origin HLS playlists and segments lacking CORS headers, and relative URIs or EXT-X-KEY/EXT-X-MAP URIs inside proxied M3U8 manifests break unless rewritten to absolute proxy URLs."
 ---
 
 ## Statement

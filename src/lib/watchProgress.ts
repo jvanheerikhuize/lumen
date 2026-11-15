@@ -9,14 +9,40 @@ const MAX_PROGRESS_ITEMS = 40;
 export interface HouseholdMember {
   id: string;
   name: string;
+  nickname?: string;
   color: string;
+  isKids?: boolean;
 }
 
 export const DEFAULT_HOUSEHOLD_PROFILES: HouseholdMember[] = [
   { id: 'default', name: 'Member 1', color: 'rose' },
   { id: 'member-2', name: 'Member 2', color: 'sky' },
-  { id: 'kids', name: 'Kids', color: 'emerald' },
+  { id: 'kids', name: 'Kids', color: 'emerald', isKids: true },
 ];
+
+export function getMemberDisplayName(member: Pick<HouseholdMember, 'name' | 'nickname'> | null | undefined): string {
+  if (!member) return 'Member';
+  const nick = member.nickname?.trim();
+  return nick || member.name.trim() || 'Member';
+}
+
+function normalizeProfiles(raw: unknown): HouseholdMember[] {
+  if (!Array.isArray(raw) || raw.length === 0) return DEFAULT_HOUSEHOLD_PROFILES;
+  const valid = raw
+    .filter((p): p is HouseholdMember => Boolean(p && typeof p === 'object' && typeof (p as HouseholdMember).id === 'string' && (p as HouseholdMember).id.trim() && typeof (p as HouseholdMember).name === 'string' && (p as HouseholdMember).name.trim()))
+    .map((p) => {
+      const nickname = typeof p.nickname === 'string' ? p.nickname.trim() : '';
+      const isKids = typeof p.isKids === 'boolean' ? p.isKids : p.id === 'kids';
+      return {
+        id: p.id.trim(),
+        name: p.name.trim(),
+        ...(nickname ? { nickname } : {}),
+        color: typeof p.color === 'string' && p.color.trim() ? p.color.trim() : 'rose',
+        ...(isKids ? { isKids: true } : {}),
+      };
+    });
+  return valid.length > 0 ? valid : DEFAULT_HOUSEHOLD_PROFILES;
+}
 
 export function getActiveProfileId(): string {
   if (typeof window === 'undefined') return 'default';
@@ -44,18 +70,14 @@ export function getHouseholdProfiles(): HouseholdMember[] {
   try {
     const raw = localStorage.getItem(HOUSEHOLD_PROFILES_KEY);
     if (!raw) return DEFAULT_HOUSEHOLD_PROFILES;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.filter((p): p is HouseholdMember => Boolean(p?.id && p?.name));
-    }
-    return DEFAULT_HOUSEHOLD_PROFILES;
+    return normalizeProfiles(JSON.parse(raw));
   } catch {
     return DEFAULT_HOUSEHOLD_PROFILES;
   }
 }
 
 export function saveHouseholdProfiles(profiles: HouseholdMember[], syncServer = true): HouseholdMember[] {
-  const clean = profiles.length > 0 ? profiles : DEFAULT_HOUSEHOLD_PROFILES;
+  const clean = normalizeProfiles(profiles);
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(HOUSEHOLD_PROFILES_KEY, JSON.stringify(clean));
@@ -65,6 +87,20 @@ export function saveHouseholdProfiles(profiles: HouseholdMember[], syncServer = 
     if (syncServer) pushStateToServer();
   }
   return clean;
+}
+
+export function clearProfileLocalState(profileId: string): void {
+  if (typeof window === 'undefined') return;
+  const trimmed = profileId.trim();
+  if (!trimmed) return;
+  try {
+    localStorage.removeItem(progressStorageKey(trimmed));
+    localStorage.removeItem(favoriteChannelsStorageKey(trimmed));
+    const tasteKey = trimmed === 'default' ? 'screentime_taste_v1' : `screentime_taste_v1:${trimmed}`;
+    localStorage.removeItem(tasteKey);
+  } catch {
+    // ignore
+  }
 }
 
 function progressStorageKey(profileId = getActiveProfileId()): string {
@@ -242,25 +278,39 @@ let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 const pendingRemovedMediaIds = new Set<string>();
 const pendingRemovedChannelIds = new Set<string>();
 
+/** Immediately push client state to `/api/state`, cancelling any pending debounce timer. */
+export async function flushStateToServer(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (syncTimeout) {
+    clearTimeout(syncTimeout);
+    syncTimeout = null;
+  }
+  const profileId = getActiveProfileId();
+  const profiles = getHouseholdProfiles();
+  const watchProgress = getWatchProgressList();
+  const favoriteChannelIds = getFavoriteChannelIds();
+  const removedMediaIds = Array.from(pendingRemovedMediaIds);
+  const removedChannelIds = Array.from(pendingRemovedChannelIds);
+  pendingRemovedMediaIds.clear();
+  pendingRemovedChannelIds.clear();
+  try {
+    await fetch(`/api/state?profile=${encodeURIComponent(profileId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId, profiles, watchProgress, favoriteChannelIds, removedMediaIds, removedChannelIds }),
+    });
+  } catch {
+    // ignore background sync failures
+  }
+}
+
 /** Debounced background push of client watch progress & favorites to `/api/state` for LAN device sync. */
 export function pushStateToServer(): void {
   if (typeof window === 'undefined') return;
   if (syncTimeout) clearTimeout(syncTimeout);
   syncTimeout = setTimeout(() => {
     syncTimeout = null;
-    const profileId = getActiveProfileId();
-    const profiles = getHouseholdProfiles();
-    const watchProgress = getWatchProgressList();
-    const favoriteChannelIds = getFavoriteChannelIds();
-    const removedMediaIds = Array.from(pendingRemovedMediaIds);
-    const removedChannelIds = Array.from(pendingRemovedChannelIds);
-    pendingRemovedMediaIds.clear();
-    pendingRemovedChannelIds.clear();
-    fetch(`/api/state?profile=${encodeURIComponent(profileId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId, profiles, watchProgress, favoriteChannelIds, removedMediaIds, removedChannelIds }),
-    }).catch(() => {});
+    void flushStateToServer();
   }, 400);
 }
 
@@ -284,7 +334,18 @@ export async function syncStateFromServer(profileOverride?: string): Promise<{
     const serverProgress: WatchProgressEntry[] = Array.isArray(data?.watchProgress) ? data.watchProgress : [];
     const serverFavorites: string[] = Array.isArray(data?.favoriteChannelIds) ? data.favoriteChannelIds : [];
 
-    saveHouseholdProfiles(serverProfiles, false);
+    const cleanProfiles = saveHouseholdProfiles(serverProfiles, false);
+    const activeValid = cleanProfiles.some((p) => p.id === profileId);
+    const effectiveProfileId = activeValid ? profileId : setActiveProfileId(cleanProfiles[0].id);
+
+    if (!activeValid) {
+      return {
+        profileId: effectiveProfileId,
+        profiles: cleanProfiles,
+        watchProgress: getWatchProgressList(),
+        favoriteChannelIds: getFavoriteChannelIds(),
+      };
+    }
 
     // Merge watchProgress by media.id, keeping whichever entry has the newer updatedAt timestamp.
     const byId = new Map<string, WatchProgressEntry>();
@@ -305,12 +366,12 @@ export async function syncStateFromServer(profileOverride?: string): Promise<{
     const mergedFavorites = Array.from(new Set([...localFavorites, ...serverFavorites]));
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(favoriteChannelsStorageKey(profileId), JSON.stringify(mergedFavorites));
+        localStorage.setItem(favoriteChannelsStorageKey(effectiveProfileId), JSON.stringify(mergedFavorites));
       } catch {
         // ignore
       }
     }
-    return { profileId, profiles: serverProfiles, watchProgress: mergedProgress, favoriteChannelIds: mergedFavorites };
+    return { profileId: effectiveProfileId, profiles: cleanProfiles, watchProgress: mergedProgress, favoriteChannelIds: mergedFavorites };
   } catch {
     return { profileId, profiles: localProfiles, watchProgress: localProgress, favoriteChannelIds: localFavorites };
   }

@@ -1,26 +1,31 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Play, Search, MapPin, Clock, X, Star } from 'lucide-react';
+import { Play, Search, MapPin, Clock, X, Star, Globe } from 'lucide-react';
 import { LiveChannel } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
+import { SelectDropdown, SelectOption } from '@/components/SelectDropdown';
 import { getFavoriteChannelIds, toggleFavoriteChannel } from '@/lib/watchProgress';
+import { filterKidsLiveChannels } from '@/lib/kidsFilter';
 
 interface LiveChannelsGridProps {
   onPlayChannel: (channel: LiveChannel, channelList?: LiveChannel[]) => void;
+  isKidsMode?: boolean;
 }
 
 const COUNTRY_KEY = 'lumen_live_country';
+const KIDS_COUNTRY_KEY = 'lumen_live_country_kids';
 const PAGE = 60;
 const ALL = 'all';
 const INTL = 'INTL';
-const CATEGORIES = ['All', 'Favorites', 'News', 'Sports', 'Documentary', 'Music & Culture', 'Entertainment', 'General'] as const;
+const CATEGORIES = ['All', 'Favorites', 'Kids', 'News', 'Sports', 'Documentary', 'Music & Culture', 'Entertainment', 'General'] as const;
+const KIDS_CATEGORIES = ['All', 'Favorites', 'Kids'] as const;
 /** Filter key: the ISO country, or "International" for themed channels without one. */
 const regionKey = (c: LiveChannel) => c.countryCode || INTL;
 
-function readCountry(): string | null {
+function readCountry(storageKey: string): string | null {
   try {
-    return localStorage.getItem(COUNTRY_KEY) || localStorage.getItem('screentime_live_country');
+    return localStorage.getItem(storageKey) || (storageKey === COUNTRY_KEY ? localStorage.getItem('screentime_live_country') : null);
   } catch {
     return null;
   }
@@ -34,7 +39,7 @@ function browserCountry(): string | undefined {
   return undefined;
 }
 
-export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChannel }) => {
+export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChannel, isKidsMode = false }) => {
   const [channels, setChannels] = useState<LiveChannel[] | null>(null);
   const [country, setCountry] = useState<string>(ALL);
   const [category, setCategory] = useState<string>('All');
@@ -45,26 +50,31 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
   const [status, setStatus] = useState<Record<string, 'ok' | 'offline'>>({});
   const [showOffline, setShowOffline] = useState(false);
 
+  const activeCountryKey = isKidsMode ? KIDS_COUNTRY_KEY : COUNTRY_KEY;
+  const categories = isKidsMode ? KIDS_CATEGORIES : CATEGORIES;
+
   useEffect(() => {
     let cancelled = false;
     fetch('/api/live')
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        const list: LiveChannel[] = data.channels || [];
+        const rawList: LiveChannel[] = data.channels || [];
+        const list = isKidsMode ? filterKidsLiveChannels(rawList) : rawList;
         setChannels(list);
         setFavoriteIds(getFavoriteChannelIds());
-        // Remembered choice, else the browser's country if it has channels, else everything.
-        const saved = readCountry();
-        const guess = browserCountry();
+        // Remembered choice, else the browser's country if it has channels (disabled for Kids mode so all Kids stations appear), else everything.
+        const saved = readCountry(activeCountryKey);
+        const guess = isKidsMode ? undefined : browserCountry();
         if (saved && (saved === ALL || list.some((c) => regionKey(c) === saved))) setCountry(saved);
         else if (guess && list.some((c) => c.countryCode === guess)) setCountry(guess);
+        else setCountry(ALL);
       })
       .catch(() => !cancelled && setChannels([]));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isKidsMode, activeCountryKey]);
 
   const countries = useMemo(() => {
     const counts = new Map<string, { name: string; count: number }>();
@@ -76,6 +86,18 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
     }
     return [...counts.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name));
   }, [channels]);
+
+  const countryOptions = useMemo<SelectOption[]>(() => {
+    const total = (channels || []).length;
+    return [
+      { value: ALL, label: 'All countries', badge: total || undefined },
+      ...countries.map(([code, { name, count }]) => ({
+        value: code,
+        label: name,
+        badge: count,
+      })),
+    ];
+  }, [channels, countries]);
 
   const favSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
 
@@ -132,7 +154,7 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
     setCountry(code);
     setLimit(PAGE);
     try {
-      localStorage.setItem(COUNTRY_KEY, code);
+      localStorage.setItem(activeCountryKey, code);
     } catch {
       // ignore
     }
@@ -143,27 +165,32 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
   return (
     <div>
       <PageHeader
-        eyebrow="Live"
-        title="Live TV"
-        description="Free-to-air broadcasters and free ad-supported channels from around the world."
+        eyebrow={isKidsMode ? 'Kids · Live' : 'Live'}
+        title={isKidsMode ? 'Kids Live TV' : 'Live TV'}
+        description={
+          isKidsMode
+            ? 'Kid-friendly free-to-air channels and children’s networks from the Free-TV directory.'
+            : 'Free-to-air broadcasters and free ad-supported channels from around the world.'
+        }
       />
 
       {/* Category filter chips */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <button
             key={cat}
+            type="button"
             onClick={() => {
               setCategory(cat);
               setLimit(PAGE);
             }}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+            className={`h-8 px-3.5 rounded-full inline-flex items-center justify-center text-xs font-semibold leading-none whitespace-nowrap transition-colors ${
               category === cat
-                ? 'bg-white text-zinc-950'
-                : 'bg-white/[0.05] text-zinc-300 ring-1 ring-inset ring-white/[0.08] hover:bg-white/10 hover:text-white'
+                ? 'bg-white text-zinc-950 shadow-sm'
+                : 'bg-zinc-900/80 text-zinc-300 ring-1 ring-inset ring-white/10 hover:bg-zinc-800 hover:text-white'
             }`}
           >
-            {cat}
+            <span className="text-trim">{cat}</span>
           </button>
         ))}
       </div>
@@ -179,10 +206,10 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
                   type="button"
                   onClick={() => chooseCountry(ALL)}
                   title="Show channels from all countries"
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-300 ring-1 ring-inset ring-rose-500/30 text-xs font-medium hover:bg-rose-500/25 transition-colors"
+                  className="h-6 inline-flex items-center justify-center gap-1 px-2.5 rounded-full bg-rose-500/15 text-rose-300 ring-1 ring-inset ring-rose-500/30 text-xs font-semibold leading-none hover:bg-rose-500/25 transition-colors"
                 >
-                  {countryLabel}
-                  <X className="w-3 h-3" />
+                  <span className="text-trim">{countryLabel}</span>
+                  <X className="w-3 h-3 shrink-0" />
                 </button>
               )}
             </div>
@@ -192,7 +219,11 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
                 {offlineCount > 0 && (
                   <>
                     {' · '}
-                    <button onClick={() => setShowOffline((v) => !v)} className="underline decoration-zinc-700 underline-offset-2 hover:text-zinc-300">
+                    <button
+                      type="button"
+                      onClick={() => setShowOffline((v) => !v)}
+                      className="underline decoration-zinc-700 underline-offset-2 hover:text-zinc-300"
+                    >
                       {showOffline ? 'hide' : 'show'} {offlineCount} offline
                     </button>
                   </>
@@ -201,8 +232,8 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            <div className="relative flex items-center">
+              <Search className="absolute left-3.5 w-4 h-4 text-zinc-400 pointer-events-none" />
               <input
                 value={query}
                 onChange={(e) => {
@@ -211,22 +242,30 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
                 }}
                 placeholder="Find a channel"
                 aria-label="Find a channel"
-                className="w-44 bg-white/[0.05] ring-1 ring-inset ring-white/[0.08] focus:ring-white/25 rounded-full pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 outline-none"
+                className="h-9 w-44 sm:w-52 bg-zinc-900/85 hover:bg-zinc-800/95 focus:bg-zinc-900 ring-1 ring-inset ring-white/12 focus:ring-rose-500/60 rounded-full pl-9 pr-8 text-xs sm:text-sm text-white placeholder-zinc-400 outline-none shadow-sm transition-all"
               />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-label="Clear channel search"
+                  className="absolute right-2.5 w-5 h-5 rounded-full inline-flex items-center justify-center text-zinc-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-            <select
+            <SelectDropdown
               value={country}
-              onChange={(e) => chooseCountry(e.target.value)}
-              aria-label="Country"
-              className="max-w-[12rem] bg-white/[0.05] ring-1 ring-inset ring-white/[0.08] text-sm text-white rounded-full pl-4 pr-3 py-2 outline-none focus:ring-white/25 [&>option]:bg-zinc-900"
-            >
-              <option value={ALL}>All countries</option>
-              {countries.map(([code, { name, count }]) => (
-                <option key={code} value={code}>
-                  {name} ({count})
-                </option>
-              ))}
-            </select>
+              onChange={chooseCountry}
+              options={countryOptions}
+              ariaLabel="Country"
+              icon={<Globe className="w-3.5 h-3.5" />}
+              searchable
+              searchPlaceholder="Filter countries…"
+              align="right"
+              menuWidthClass="w-72"
+            />
           </div>
         </div>
 
@@ -246,15 +285,20 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
         </div>
 
         {channels !== null && shown.length === 0 && (
-          <p className="py-16 text-center text-sm text-zinc-500">No channels match. Try another country, category, or search.</p>
+          <p className="py-16 text-center text-sm text-zinc-500">
+            {isKidsMode
+              ? 'No Kids channels match. Try All countries or clear your search.'
+              : 'No channels match. Try another country, category, or search.'}
+          </p>
         )}
         {shown.length > limit && (
           <div className="flex justify-center pt-6">
             <button
+              type="button"
               onClick={() => setLimit((l) => l + PAGE)}
-              className="px-6 py-2.5 rounded-full bg-white/[0.06] ring-1 ring-inset ring-white/10 text-sm font-medium text-zinc-200 hover:bg-white/10 hover:text-white transition-colors"
+              className="h-10 px-6 rounded-full inline-flex items-center justify-center bg-zinc-900/85 hover:bg-zinc-800 ring-1 ring-inset ring-white/12 text-sm font-semibold leading-none text-zinc-200 hover:text-white transition-colors"
             >
-              Show more ({shown.length - limit} left)
+              <span className="text-trim">Show more ({shown.length - limit} left)</span>
             </button>
           </div>
         )}
@@ -273,8 +317,7 @@ const LogoCard: React.FC<{
   onToggleFavorite: (id: string) => void;
   onPlay: (c: LiveChannel) => void;
 }> = ({ channel, status, isFavorite, onToggleFavorite, onPlay }) => {
-  // Hand-picked channels carry artwork rather than a logo, so they're shown by name.
-  const [broken, setBroken] = useState(!channel.logo || channel.source === 'curated');
+  const [broken, setBroken] = useState(!channel.logo);
   return (
     <div
       role="button"
@@ -302,8 +345,8 @@ const LogoCard: React.FC<{
           />
         )}
         <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <span className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-xl">
-            <Play className="w-4 h-4 fill-current ml-0.5" />
+          <span className="w-10 h-10 rounded-full bg-white text-black inline-flex items-center justify-center shadow-xl">
+            <Play className="w-4 h-4 fill-current shrink-0" />
           </span>
         </span>
         <button
@@ -315,13 +358,13 @@ const LogoCard: React.FC<{
           aria-label={isFavorite ? `Unfavorite ${channel.name}` : `Favorite ${channel.name}`}
           aria-pressed={isFavorite}
           title={isFavorite ? 'Remove from favorites' : 'Pin to favorites'}
-          className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+          className={`absolute top-2 right-2 w-7 h-7 rounded-full inline-flex items-center justify-center transition-all ${
             isFavorite
-              ? 'bg-black/70 text-amber-400 opacity-100'
-              : 'bg-black/60 text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100'
+              ? 'bg-black/75 text-amber-400 opacity-100 ring-1 ring-inset ring-amber-400/30'
+              : 'bg-black/65 text-zinc-300 hover:text-white opacity-0 group-hover:opacity-100 ring-1 ring-inset ring-white/10'
           }`}
         >
-          <Star className={`w-3.5 h-3.5 ${isFavorite ? 'fill-amber-400' : ''}`} />
+          <Star className={`w-3.5 h-3.5 shrink-0 ${isFavorite ? 'fill-amber-400' : ''}`} />
         </button>
       </div>
       <p className="mt-2 text-sm font-medium text-zinc-100 truncate">{channel.name}</p>
@@ -332,19 +375,20 @@ const LogoCard: React.FC<{
           }`}
           title={status === 'ok' ? 'On air' : status === 'offline' ? 'Offline' : 'Checking…'}
         />
-        {channel.country}
+        <span className="truncate">{channel.country}</span>
         {channel.geoBlocked && (
-          <span className="inline-flex items-center gap-0.5 text-amber-400/80" title="Only available from this country">
-            <MapPin className="w-3 h-3" />
-            local
+          <span className="inline-flex items-center gap-0.5 text-amber-400/80 shrink-0" title="Only available from this country">
+            <MapPin className="w-3 h-3 shrink-0" />
+            <span>local</span>
           </span>
         )}
         {channel.partTime && (
-          <span className="inline-flex items-center gap-0.5 text-zinc-500" title="Not on air 24/7">
-            <Clock className="w-3 h-3" />
+          <span className="inline-flex items-center gap-0.5 text-zinc-500 shrink-0" title="Not on air 24/7">
+            <Clock className="w-3 h-3 shrink-0" />
           </span>
         )}
       </p>
     </div>
   );
 };
+

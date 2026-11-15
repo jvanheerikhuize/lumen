@@ -172,8 +172,11 @@ func CheckStreamStatus(ctx context.Context, streamURL string, lookup netguard.Lo
 // CheckBatchStreamStatus checks up to MaxStatusURLs (24) known channel URLs with concurrency 8.
 func CheckBatchStreamStatus(ctx context.Context, requestedURLs []string, lookup netguard.LookupHostFunc) map[string]string {
 	all := GetAllChannels(ctx)
-	known := make(map[string]bool, len(all))
+	known := make(map[string]bool, len(all)+len(LiveChannels))
 	for _, c := range all {
+		known[c.StreamURL] = true
+	}
+	for _, c := range LiveChannels {
 		known[c.StreamURL] = true
 	}
 	statusMu.Lock()

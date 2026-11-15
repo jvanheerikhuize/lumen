@@ -1,8 +1,8 @@
 {
   "name": "lumen",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Single-binary Go + React 19 self-hosted streaming dashboard: free catalogs, anime, live TV, and torrent streaming with on-the-fly ffmpeg conversion. Specs: https://jvanheerikhuize.github.io/lumen/",
+  "description": "Single-binary Go + React 19 self-hosted streaming dashboard: free catalogs, anime, live TV, household & Kids profiles, and torrent streaming with on-the-fly ffmpeg conversion. Specs: https://jvanheerikhuize.github.io/lumen/",
   "homepage": "https://jvanheerikhuize.github.io/lumen/",
   "license": "MIT",
   "repository": {
@@ -14,7 +14,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node -e \"require('node:fs').writeFileSync('web/dist/.gitkeep', '')\"",
     "start": "./bin/lumen",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",

@@ -184,6 +184,10 @@ func truncateMedia(items []types.MediaItem, limit int) []types.MediaItem {
 }
 
 func (s *Server) handleTrending(w http.ResponseWriter, r *http.Request) {
+	if isKidsModeRequest(r) {
+		s.handleKidsTrending(w, r)
+		return
+	}
 	ctx := r.Context()
 	var (
 		airingToday   []types.MediaItem
@@ -303,6 +307,136 @@ func (s *Server) handleTrending(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trendingOut := metadata.SampleMediaCatalog
+	if len(rows) > 0 && len(rows[0].Items) > 0 {
+		trendingOut = rows[0].Items
+	}
+
+	w.Header().Set("Cache-Control", "public, s-maxage=900, stale-while-revalidate=1800")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"featured": featured,
+		"rows":     rows,
+		"trending": trendingOut,
+		"movies":   movies,
+		"series":   series,
+	})
+}
+
+func (s *Server) handleKidsTrending(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var (
+		familyMovies    []types.MediaItem
+		animMovies      []types.MediaItem
+		familySeries    []types.MediaItem
+		animSeries      []types.MediaItem
+		comedyMovies    []types.MediaItem
+		adventureMovies []types.MediaItem
+		docs            []types.MediaItem
+		animeTrending   []types.MediaItem
+		wg              sync.WaitGroup
+	)
+
+	wg.Add(8)
+	go func() {
+		defer wg.Done()
+		familyMovies = metadata.GetCinemetaCatalog(ctx, "movie", metadata.CinemetaCatalogOptions{Catalog: "top", Genre: "Family"})
+	}()
+	go func() {
+		defer wg.Done()
+		animMovies = metadata.GetCinemetaCatalog(ctx, "movie", metadata.CinemetaCatalogOptions{Catalog: "top", Genre: "Animation"})
+	}()
+	go func() {
+		defer wg.Done()
+		familySeries = metadata.GetCinemetaCatalog(ctx, "tv", metadata.CinemetaCatalogOptions{Catalog: "top", Genre: "Family"})
+	}()
+	go func() {
+		defer wg.Done()
+		animSeries = metadata.GetCinemetaCatalog(ctx, "tv", metadata.CinemetaCatalogOptions{Catalog: "top", Genre: "Animation"})
+	}()
+	go func() {
+		defer wg.Done()
+		comedyMovies = metadata.GetCinemetaCatalog(ctx, "movie", metadata.CinemetaCatalogOptions{Catalog: "top", Genre: "Comedy"})
+	}()
+	go func() {
+		defer wg.Done()
+		adventureMovies = metadata.GetCinemetaCatalog(ctx, "movie", metadata.CinemetaCatalogOptions{Catalog: "top", Genre: "Adventure"})
+	}()
+	go func() {
+		defer wg.Done()
+		docs = metadata.GetCinemetaCatalog(ctx, "movie", metadata.CinemetaCatalogOptions{Catalog: "top", Genre: "Documentary"})
+	}()
+	go func() {
+		defer wg.Done()
+		animeTrending, _ = metadata.GetAnimeCatalog(ctx, metadata.AnimeCatalogOptions{Catalog: "trending", PerPage: 30})
+	}()
+	wg.Wait()
+
+	familyMovies = FilterKidsSafeMedia(familyMovies)
+	animMovies = FilterKidsSafeMedia(animMovies)
+	familySeries = FilterKidsSafeMedia(familySeries)
+	animSeries = FilterKidsSafeMedia(animSeries)
+	comedyMovies = FilterKidsSafeMedia(comedyMovies)
+	adventureMovies = FilterKidsSafeMedia(adventureMovies)
+	docs = FilterKidsSafeMedia(docs)
+	animeTrending = FilterKidsSafeMedia(animeTrending)
+
+	fallbackKids := FilterKidsSafeMedia(metadata.SampleMediaCatalog)
+	var fallbackMovies, fallbackSeries []types.MediaItem
+	for _, m := range fallbackKids {
+		if m.MediaType == "movie" {
+			fallbackMovies = append(fallbackMovies, m)
+		} else if m.MediaType == "tv" {
+			fallbackSeries = append(fallbackSeries, m)
+		}
+	}
+
+	movies := dedupeMediaItems(interleaveMedia(familyMovies, animMovies))
+	if len(movies) == 0 {
+		movies = fallbackMovies
+	}
+	series := dedupeMediaItems(interleaveMedia(familySeries, animSeries))
+	if len(series) == 0 {
+		series = fallbackSeries
+	}
+	trendingItems := truncateMedia(dedupeMediaItems(interleaveMedia(movies, series)), rowLimit)
+
+	candidateRows := []types.CatalogRow{
+		{Key: "trending", Title: "Kids & Family Picks", Subtitle: "Popular family and animated favorites", Items: trendingItems},
+		{Key: "family-movies", Title: "Family Movies", Subtitle: "Popular movies for the whole family", Items: truncateMedia(familyMovies, rowLimit)},
+		{Key: "animated-features", Title: "Animated Features", Subtitle: "Popular animated movies", Items: truncateMedia(animMovies, rowLimit)},
+		{Key: "family-series", Title: "Kids & Family Series", Subtitle: "Family-friendly shows and adventures", Items: truncateMedia(familySeries, rowLimit)},
+		{Key: "animated-series", Title: "Animated Series", Subtitle: "Popular animated shows", Items: truncateMedia(animSeries, rowLimit)},
+		{Key: "family-adventure", Title: "Family Adventure", Subtitle: "All-ages quests and imagination", Items: truncateMedia(adventureMovies, rowLimit)},
+		{Key: "family-comedy", Title: "Kids Comedy", Subtitle: "Lighthearted laughs for everyone", Items: truncateMedia(comedyMovies, rowLimit)},
+		{Key: "trending-anime", Title: "All-Ages Anime", Subtitle: "Family-friendly anime on AniList", Items: truncateMedia(animeTrending, rowLimit)},
+		{Key: "nature-docs", Title: "Nature & Documentaries", Subtitle: "Discoveries and real-world stories", Items: truncateMedia(docs, rowLimit)},
+	}
+
+	var rows []types.CatalogRow
+	for _, row := range candidateRows {
+		if len(row.Items) > 0 {
+			rows = append(rows, row)
+		}
+	}
+
+	var heroPool []types.MediaItem
+	for _, list := range [][]types.MediaItem{familyMovies, animMovies, familySeries, animSeries, fallbackKids} {
+		for _, m := range list {
+			if m.BackdropPath != nil && *m.BackdropPath != "" && m.Overview != "" && m.ImdbID != "" {
+				heroPool = append(heroPool, m)
+			}
+		}
+	}
+	var featured types.MediaItem
+	if len(heroPool) > 0 {
+		limit := min(20, len(heroPool))
+		featured = heroPool[rand.IntN(limit)]
+	} else if len(fallbackKids) > 0 {
+		featured = fallbackKids[0]
+	} else {
+		featured = metadata.FeaturedHero
+	}
+
+	trendingOut := fallbackKids
 	if len(rows) > 0 && len(rows[0].Items) > 0 {
 		trendingOut = rows[0].Items
 	}
@@ -502,6 +636,7 @@ func (s *Server) handleMediaDetails(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
+	kidsMode := isKidsModeRequest(r)
 	skip, _ := strconv.Atoi(q.Get("skip"))
 	if skip < 0 {
 		skip = 0
@@ -512,15 +647,31 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		if !slices.Contains(metadata.AnimeCatalogs, cat) {
 			cat = "trending"
 		}
+		genre := q.Get("genre")
+		genresOut := metadata.AnimeGenres
+		if kidsMode {
+			genresOut = kidsAnimeGenres
+			if genre != "" && !isAllowedKidsGenre(genre, kidsAnimeGenres) {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"items":   []types.MediaItem{},
+					"hasMore": false,
+					"genres":  genresOut,
+				})
+				return
+			}
+		}
 		items, hasMore := metadata.GetAnimeCatalog(ctx, metadata.AnimeCatalogOptions{
 			Catalog: cat,
-			Genre:   q.Get("genre"),
+			Genre:   genre,
 			Page:    (skip / metadata.AnilistPageSize) + 1,
 		})
+		if kidsMode {
+			items = FilterKidsSafeMedia(items)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"items":   items,
 			"hasMore": hasMore,
-			"genres":  metadata.AnimeGenres,
+			"genres":  genresOut,
 		})
 		return
 	}
@@ -534,6 +685,19 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		catalog = "top"
 	}
 	genreParam := q.Get("genre")
+	genresOut := metadata.CinemetaGenres
+	if kidsMode {
+		genresOut = kidsCinemetaGenres
+		if catalog != "year" && genreParam != "" && !isAllowedKidsGenre(genreParam, kidsCinemetaGenres) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"items":   []types.MediaItem{},
+				"hasMore": false,
+				"genres":  genresOut,
+			})
+			return
+		}
+	}
+
 	genre := ""
 	if catalog == "year" {
 		if reFourDigit.MatchString(genreParam) {
@@ -545,20 +709,61 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		genre = genreParam
 	}
 
-	items := metadata.GetCinemetaCatalog(ctx, mediaType, metadata.CinemetaCatalogOptions{
+	if kidsMode && catalog == "top" && genre == "" {
+		var (
+			familyItems []types.MediaItem
+			animItems   []types.MediaItem
+			wg          sync.WaitGroup
+		)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			familyItems = metadata.GetCinemetaCatalog(ctx, mediaType, metadata.CinemetaCatalogOptions{
+				Catalog: "top",
+				Genre:   "Family",
+				Skip:    skip,
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			animItems = metadata.GetCinemetaCatalog(ctx, mediaType, metadata.CinemetaCatalogOptions{
+				Catalog: "top",
+				Genre:   "Animation",
+				Skip:    skip,
+			})
+		}()
+		wg.Wait()
+
+		merged := FilterKidsSafeMedia(dedupeMediaItems(interleaveMedia(familyItems, animItems)))
+		hasMore := float64(len(familyItems)) >= float64(metadata.CinemetaPageSize)*0.8 ||
+			float64(len(animItems)) >= float64(metadata.CinemetaPageSize)*0.8
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":   merged,
+			"hasMore": hasMore,
+			"genres":  genresOut,
+		})
+		return
+	}
+
+	rawItems := metadata.GetCinemetaCatalog(ctx, mediaType, metadata.CinemetaCatalogOptions{
 		Catalog: catalog,
 		Genre:   genre,
 		Skip:    skip,
 	})
+	items := rawItems
+	if kidsMode {
+		items = FilterKidsSafeMedia(rawItems)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":   items,
-		"hasMore": float64(len(items)) >= float64(metadata.CinemetaPageSize)*0.8,
-		"genres":  metadata.CinemetaGenres,
+		"hasMore": float64(len(rawItems)) >= float64(metadata.CinemetaPageSize)*0.8,
+		"genres":  genresOut,
 	})
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	kidsMode := isKidsModeRequest(r)
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -610,10 +815,16 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if kidsMode {
+		results = FilterKidsSafeMedia(results)
+	}
 
 	qLower := strings.ToLower(q)
 	var matchedChannels []types.LiveChannel
 	for _, ch := range allChannels {
+		if kidsMode && ch.Category != "Kids" {
+			continue
+		}
 		if strings.Contains(strings.ToLower(ch.Name), qLower) ||
 			strings.Contains(strings.ToLower(ch.Country), qLower) ||
 			strings.Contains(strings.ToLower(ch.Category), qLower) {

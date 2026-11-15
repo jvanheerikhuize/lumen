@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -203,5 +204,92 @@ func TestSQLiteStoreHouseholdMemberProfileIsolation(t *testing.T) {
 	}
 	if len(bobState.FavoriteChannelIDs) != 1 || bobState.FavoriteChannelIDs[0] != "redbull-tv" {
 		t.Fatalf("unexpected bob favorites: %v", bobState.FavoriteChannelIDs)
+	}
+}
+
+func TestSQLiteStoreProfileMigrationNicknamesAndDeleteCleanup(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "lumen.db")
+
+	// Simulate an older DB schema without nickname and is_kids columns.
+	legacyStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	_, _ = legacyStore.db.Exec(`DROP TABLE household_profiles`)
+	_, err = legacyStore.db.Exec(`
+		CREATE TABLE household_profiles (
+			profile_id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			color TEXT NOT NULL,
+			position_order INTEGER NOT NULL
+		);
+		INSERT INTO household_profiles (profile_id, name, color, position_order) VALUES
+			('default', 'Member 1', 'rose', 0),
+			('member-2', 'Member 2', 'sky', 1),
+			('kids', 'Kids', 'emerald', 2);
+	`)
+	if err != nil {
+		t.Fatalf("failed to seed legacy schema: %v", err)
+	}
+	_ = legacyStore.Close()
+
+	// Re-open with NewStore: migration adds columns and backfills is_kids=1 for 'kids'.
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore reopen failed on %s: %v", dbPath, err)
+	}
+	defer func() { _ = store.Close() }()
+
+	st, err := store.GetState(context.Background())
+	if err != nil {
+		t.Fatalf("GetState failed: %v", err)
+	}
+	if len(st.Profiles) != 3 || !st.Profiles[2].IsKids {
+		t.Fatalf("expected migrated kids profile to have IsKids=true, got %+v", st.Profiles)
+	}
+
+	// Add watch progress & favorites on member-2, then update nicknames & remove member-2.
+	wp := []WatchProgressEntry{{
+		Media:     makeMedia("tt0133093", "The Matrix", "movie"),
+		Position:  120,
+		Duration:  3600,
+		UpdatedAt: 1000,
+	}}
+	favs := []string{"dw-news-en"}
+	_, err = store.UpdateState(context.Background(), StatePatch{
+		ProfileID:          "member-2",
+		WatchProgress:      &wp,
+		FavoriteChannelIDs: &favs,
+	})
+	if err != nil {
+		t.Fatalf("seed member-2 state failed: %v", err)
+	}
+
+	updatedProfiles := []HouseholdMember{
+		{ID: "default", Name: "Member 1", Nickname: "Jerry", Color: "amber", IsKids: false},
+		{ID: "kids", Name: "Kids", Nickname: "Little Stars", Color: "emerald", IsKids: true},
+	}
+	after, err := store.UpdateState(context.Background(), StatePatch{
+		ProfileID: "default",
+		Profiles:  &updatedProfiles,
+	})
+	if err != nil {
+		t.Fatalf("UpdateState profiles failed: %v", err)
+	}
+	if len(after.Profiles) != 2 || after.Profiles[0].Nickname != "Jerry" || after.Profiles[0].Color != "amber" {
+		t.Fatalf("unexpected updated profiles: %+v", after.Profiles)
+	}
+	if after.Profiles[1].Nickname != "Little Stars" || !after.Profiles[1].IsKids {
+		t.Fatalf("unexpected kids profile after update: %+v", after.Profiles[1])
+	}
+
+	// Orphan rows for deleted member-2 should be purged.
+	deletedState, err := store.GetStateForProfile(context.Background(), "member-2")
+	if err != nil {
+		t.Fatalf("GetStateForProfile deleted failed: %v", err)
+	}
+	if len(deletedState.WatchProgress) != 0 || len(deletedState.FavoriteChannelIDs) != 0 {
+		t.Fatalf("expected orphan data for deleted profile to be removed, got wp=%d favs=%d", len(deletedState.WatchProgress), len(deletedState.FavoriteChannelIDs))
 	}
 }

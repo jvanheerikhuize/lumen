@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Play, Star, Film, ChevronDown, Loader2, Users, HardDrive, CalendarClock, Heart } from 'lucide-react';
+import { Play, Star, Film, ChevronDown, Loader2, Users, HardDrive, CalendarClock, Heart, Layers } from 'lucide-react';
 import { MediaItem, ShowStatus, StreamSource } from '@/types';
 import { Modal } from './Modal';
+import { SelectDropdown, SelectOption } from './SelectDropdown';
 import { rankSources } from '@/lib/streaming/pickSource';
 import { cleanAddonUrls, isDefaultAddonList } from '@/lib/scrapers/addonUrls';
 import { getEpisodeProgress, getMediaProgress } from '@/lib/watchProgress';
@@ -215,7 +216,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
           {showStatus && (
             <div className="mt-3 flex items-center gap-2 flex-wrap text-xs">
               <span
-                className={`px-2.5 py-1 rounded-full font-semibold ${
+                className={`inline-flex items-center px-2.5 py-1 rounded-full font-semibold leading-none text-trim ${
                   showStatus.status === 'Running' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/10 text-zinc-300'
                 }`}
               >
@@ -223,10 +224,12 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                 {showStatus.network ? ` · ${showStatus.network}` : ''}
               </span>
               {showStatus.nextEpisode && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-zinc-200">
-                  <CalendarClock className="w-3.5 h-3.5 text-orange-300" />
-                  Next: S{showStatus.nextEpisode.season} · E{showStatus.nextEpisode.episode}
-                  {formatAirDate(showStatus.nextEpisode.airstamp) && ` · ${formatAirDate(showStatus.nextEpisode.airstamp)}`}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-zinc-200 leading-none">
+                  <CalendarClock className="w-3.5 h-3.5 text-orange-300 shrink-0" />
+                  <span className="text-trim">
+                    Next: S{showStatus.nextEpisode.season} · E{showStatus.nextEpisode.episode}
+                    {formatAirDate(showStatus.nextEpisode.airstamp) && ` · ${formatAirDate(showStatus.nextEpisode.airstamp)}`}
+                  </span>
                 </span>
               )}
             </div>
@@ -239,34 +242,37 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
         <div className="space-y-2">
           <div className="flex items-center gap-3 flex-wrap">
             <button
+              type="button"
               onClick={() => best && play(best, resumeSeconds)}
               disabled={loading || !best}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-full bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-400 text-black text-base font-semibold shadow-xl shadow-black/40 active:scale-[0.98] transition-all"
+              className="h-11 flex-1 sm:flex-initial inline-flex items-center justify-center gap-2.5 px-7 rounded-full bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-400 text-black text-sm sm:text-base font-semibold leading-none shadow-xl shadow-black/40 active:scale-[0.98] transition-all"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
-              {loading ? 'Finding streams…' : best ? playLabel : 'No streams found'}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Play className="w-4 h-4 fill-current shrink-0" />}
+              <span className="text-trim">{loading ? 'Finding streams…' : best ? playLabel : 'No streams found'}</span>
             </button>
             {resumeSeconds > 0 && !loading && best && (
               <button
+                type="button"
                 onClick={() => play(best, 0)}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-full text-sm font-semibold bg-white/[0.06] border border-white/10 text-zinc-200 hover:bg-white/15 hover:text-white transition-all active:scale-[0.98]"
+                className="h-11 inline-flex items-center justify-center gap-2 px-5 rounded-full text-sm font-semibold leading-none bg-zinc-900/85 ring-1 ring-inset ring-white/12 text-zinc-200 hover:bg-zinc-800 hover:text-white transition-all active:scale-[0.98]"
               >
-                Start over
+                <span className="text-trim">Start over</span>
               </button>
             )}
             {onToggleLike && (
               <button
+                type="button"
                 onClick={() => onToggleLike(media)}
                 aria-pressed={isLiked}
                 title={isLiked ? 'Remove from liked titles' : 'Add to liked titles'}
-                className={`inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-full text-sm font-semibold border transition-all active:scale-[0.98] ${
+                className={`h-11 inline-flex items-center justify-center gap-2 px-5 rounded-full text-sm font-semibold leading-none ring-1 ring-inset transition-all active:scale-[0.98] ${
                   isLiked
-                    ? 'bg-rose-500/20 border-rose-500/50 text-rose-200 hover:bg-rose-500/30'
-                    : 'bg-white/[0.06] border-white/10 text-zinc-200 hover:bg-white/15 hover:text-white'
+                    ? 'bg-rose-500/20 ring-rose-500/50 text-rose-200 hover:bg-rose-500/30'
+                    : 'bg-zinc-900/85 ring-white/12 text-zinc-200 hover:bg-zinc-800 hover:text-white'
                 }`}
               >
-                <Heart className={`w-4 h-4 ${isLiked ? 'fill-rose-400 text-rose-400' : ''}`} />
-                {isLiked ? 'Liked' : 'Like'}
+                <Heart className={`w-4 h-4 shrink-0 ${isLiked ? 'fill-rose-400 text-rose-400' : ''}`} />
+                <span className="text-trim">{isLiked ? 'Liked' : 'Like'}</span>
               </button>
             )}
           </div>
@@ -301,43 +307,44 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <h3 className="font-display text-lg font-semibold text-white">Episodes</h3>
-              <div className="flex items-center gap-2">
-              {seasonEpisodes.length > EPISODE_PAGE && (
-                <select
-                  value={rangeStart}
-                  onChange={(e) => setEpisodeRange(Number(e.target.value))}
-                  aria-label="Episode range"
-                  className="bg-white/[0.06] ring-1 ring-inset ring-white/10 text-sm text-white rounded-full px-3.5 py-1.5 outline-none focus:ring-white/25 [&>option]:bg-zinc-900"
-                >
-                  {Array.from({ length: Math.ceil(seasonEpisodes.length / EPISODE_PAGE) }, (_, i) => {
-                    const first = seasonEpisodes[i * EPISODE_PAGE];
-                    const last = seasonEpisodes[Math.min(seasonEpisodes.length, (i + 1) * EPISODE_PAGE) - 1];
-                    return (
-                      <option key={i} value={i * EPISODE_PAGE}>
-                        {first.episodeNumber}–{last.episodeNumber}
-                      </option>
-                    );
-                  })}
-                </select>
-              )}
-              {seasons.length > 1 && (
-              <select
-                value={season}
-                onChange={(e) => {
-                  const next = seasons.find((s) => s.seasonNumber === Number(e.target.value));
-                  setEpisodeRange(null);
-                  selectEpisode(Number(e.target.value), next?.episodes[0]?.episodeNumber || 1);
-                }}
-                className="bg-white/[0.06] ring-1 ring-inset ring-white/10 text-sm text-white rounded-full px-3.5 py-1.5 outline-none focus:ring-white/25 [&>option]:bg-zinc-900"
-                aria-label="Season"
-              >
-                {seasons.map((s) => (
-                  <option key={s.seasonNumber} value={s.seasonNumber}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {seasonEpisodes.length > EPISODE_PAGE && (
+                  <SelectDropdown
+                    value={String(rangeStart)}
+                    onChange={(val) => setEpisodeRange(Number(val))}
+                    ariaLabel="Episode range"
+                    options={Array.from({ length: Math.ceil(seasonEpisodes.length / EPISODE_PAGE) }, (_, i): SelectOption => {
+                      const first = seasonEpisodes[i * EPISODE_PAGE];
+                      const last = seasonEpisodes[Math.min(seasonEpisodes.length, (i + 1) * EPISODE_PAGE) - 1];
+                      return {
+                        value: String(i * EPISODE_PAGE),
+                        label: `Ep ${first.episodeNumber}–${last.episodeNumber}`,
+                      };
+                    })}
+                    align="right"
+                    menuWidthClass="w-44"
+                  />
+                )}
+                {seasons.length > 1 && (
+                  <SelectDropdown
+                    value={String(season)}
+                    onChange={(val) => {
+                      const num = Number(val);
+                      const next = seasons.find((s) => s.seasonNumber === num);
+                      setEpisodeRange(null);
+                      selectEpisode(num, next?.episodes[0]?.episodeNumber || 1);
+                    }}
+                    ariaLabel="Season"
+                    icon={<Layers className="w-3.5 h-3.5" />}
+                    options={seasons.map((s): SelectOption => ({
+                      value: String(s.seasonNumber),
+                      label: s.name,
+                      badge: s.episodes?.length || undefined,
+                    }))}
+                    align="right"
+                    menuWidthClass="w-56"
+                  />
+                )}
               </div>
             </div>
             <div className="divide-y divide-white/[0.06] ring-1 ring-inset ring-white/[0.08] rounded-2xl overflow-hidden bg-white/[0.02]">
@@ -349,6 +356,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                 return (
                   <button
                     key={ep.id}
+                    type="button"
                     onClick={() => selectEpisode(season, ep.episodeNumber)}
                     className={`relative w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${
                       active ? 'bg-rose-600/15' : 'hover:bg-zinc-800/70'
@@ -357,11 +365,11 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                     <span className={`min-w-7 text-sm font-mono ${active ? 'text-rose-400' : 'text-zinc-500'}`}>{ep.episodeNumber}</span>
                     <span className={`flex-1 truncate text-sm ${active ? 'text-white font-semibold' : 'text-zinc-300'}`}>{ep.name}</span>
                     {watched && (
-                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[11px] font-medium leading-none text-trim shrink-0">
                         Watched
                       </span>
                     )}
-                    {active && <Play className="w-4 h-4 text-rose-400 fill-rose-400" />}
+                    {active && <Play className="w-4 h-4 text-rose-400 fill-rose-400 shrink-0" />}
                     {epRatio > 0.02 && epRatio < 0.9 && (
                       <span className="absolute inset-x-0 bottom-0 h-0.5 bg-white/10">
                         <span
@@ -381,17 +389,19 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
         {!loading && ranked.length > 1 && (
           <div>
             <button
+              type="button"
               onClick={() => setShowAllSources((v) => !v)}
-              className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+              className="inline-flex items-center gap-1.5 text-sm leading-none text-zinc-400 hover:text-white transition-colors"
             >
-              <ChevronDown className={`w-4 h-4 transition-transform ${showAllSources ? 'rotate-180' : ''}`} />
-              {showAllSources ? 'Hide other sources' : `Choose another source (${ranked.length - 1})`}
+              <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${showAllSources ? 'rotate-180' : ''}`} />
+              <span className="text-trim">{showAllSources ? 'Hide other sources' : `Choose another source (${ranked.length - 1})`}</span>
             </button>
             {showAllSources && (
               <div className="mt-3 divide-y divide-white/[0.06] ring-1 ring-inset ring-white/[0.08] rounded-2xl overflow-hidden bg-white/[0.02]">
                 {ranked.slice(1, 31).map((source) => (
                   <button
                     key={source.id}
+                    type="button"
                     onClick={() => play(source)}
                     className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-zinc-800/70 transition-colors"
                   >

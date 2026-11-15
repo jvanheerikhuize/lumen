@@ -2,11 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MediaItem } from '../src/types/index.ts';
 import {
+  clearProfileLocalState,
   getEpisodeProgress,
   getFavoriteChannelIds,
+  getHouseholdProfiles,
   getMediaProgress,
+  getMemberDisplayName,
   getWatchProgressList,
   removeWatchProgress,
+  saveHouseholdProfiles,
   saveWatchProgress,
   setActiveProfileId,
   toggleFavoriteChannel,
@@ -102,5 +106,32 @@ test('household members each maintain isolated watch progress, favorite channels
   assert.equal(getMediaProgress('tt300')?.position, 1900);
   assert.deepEqual(getFavoriteChannelIds(), ['nhk-world']);
   assert.deepEqual(getTasteProfile().favoriteGenres, ['Comedy']);
+});
+
+test('household profile nicknames, Kids mode flag, and local cleanup behave consistently', () => {
+  mockLocalStorage();
+  const defaults = getHouseholdProfiles();
+  assert.equal(defaults.find((p) => p.id === 'kids')?.isKids, true);
+  assert.equal(getMemberDisplayName({ name: 'Member 1', nickname: '  Jerry  ' }), 'Jerry');
+  assert.equal(getMemberDisplayName({ name: 'Member 2', nickname: '   ' }), 'Member 2');
+
+  const saved = saveHouseholdProfiles(
+    [
+      { id: 'default', name: 'Member 1', nickname: 'Jerry', color: 'amber' },
+      { id: 'kids-2', name: 'Leo', nickname: 'Little Explorer', color: 'emerald', isKids: true },
+    ],
+    false
+  );
+  assert.equal(saved.length, 2);
+  const reloaded = getHouseholdProfiles();
+  assert.equal(reloaded[0]?.nickname, 'Jerry');
+  assert.equal(reloaded[1]?.isKids, true);
+
+  setActiveProfileId('temp-user');
+  saveWatchProgress(makeMedia('tt400', 'Spirited Away', 'movie'), 300, 7200);
+  toggleFavoriteChannel('cbbc');
+  clearProfileLocalState('temp-user');
+  assert.equal(getWatchProgressList().length, 0);
+  assert.deepEqual(getFavoriteChannelIds(), []);
 });
 

@@ -68,17 +68,18 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           }`}
         />
       )}
-      {/* Cinematic shading: bottom fade into the page, left fade behind the text */}
+      {/* Cinematic shading: top scrim for navbar legibility, bottom fade into the page, left fade behind the text */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-44 sm:h-48 bg-gradient-to-b from-black/92 via-black/58 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-t from-[var(--background)] via-[color-mix(in_srgb,var(--background)_35%,transparent)] to-black/30" />
       <div className="absolute inset-0 bg-gradient-to-r from-[color-mix(in_srgb,var(--background)_92%,transparent)] via-[color-mix(in_srgb,var(--background)_45%,transparent)] to-transparent md:via-transparent" />
 
-      <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col justify-end pb-14 sm:pb-16">
+      <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col justify-end pt-28 md:pt-20 pb-14 sm:pb-16">
         <div className="max-w-xl space-y-4 animate-[hero-in_700ms_ease-out_both]">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm font-medium text-zinc-300">
             {media.voteAverage > 0 && (
               <span className="inline-flex items-center gap-1 text-white">
-                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                {media.voteAverage.toFixed(1)}
+                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                <span>{media.voteAverage.toFixed(1)}</span>
               </span>
             )}
             {meta.map((m, i) => (
@@ -99,42 +100,47 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
+              type="button"
               onClick={() => onPlay(media)}
-              className="inline-flex items-center gap-2 pl-5 pr-6 py-3 rounded-full bg-white text-black font-semibold text-sm sm:text-base shadow-xl shadow-black/30 hover:bg-zinc-200 active:scale-[0.97] transition-all"
+              className="h-11 px-6 rounded-full inline-flex items-center justify-center gap-2 bg-white text-black font-semibold text-sm sm:text-base leading-none shadow-xl shadow-black/30 hover:bg-zinc-200 active:scale-[0.97] transition-all"
             >
-              <Play className="w-5 h-5 fill-current" />
-              Play
+              <Play className="w-4 h-4 fill-current shrink-0" />
+              <span className="text-trim">Play</span>
             </button>
             <button
+              type="button"
               onClick={() => onMoreInfo(media)}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold text-sm sm:text-base backdrop-blur-xl ring-1 ring-white/15 active:scale-[0.97] transition-all"
+              className="h-11 px-6 rounded-full inline-flex items-center justify-center gap-2 bg-zinc-900/75 hover:bg-zinc-800/90 text-white font-semibold text-sm sm:text-base leading-none backdrop-blur-xl ring-1 ring-inset ring-white/15 hover:ring-white/25 active:scale-[0.97] transition-all"
             >
-              <Info className="w-5 h-5" />
-              More info
+              <Info className="w-4 h-4 shrink-0" />
+              <span className="text-trim">More info</span>
             </button>
             {onToggleLike && (
               <button
+                type="button"
                 onClick={() => onToggleLike(media)}
                 title={isLiked ? 'Remove from Liked' : 'Like this title (improves recommendations)'}
                 aria-label={isLiked ? 'Unlike title' : 'Like title'}
-                className={`p-3 rounded-full backdrop-blur-xl ring-1 active:scale-[0.97] transition-all ${
+                aria-pressed={isLiked}
+                className={`w-11 h-11 rounded-full inline-flex items-center justify-center backdrop-blur-xl ring-1 ring-inset active:scale-[0.97] transition-all shrink-0 ${
                   isLiked
-                    ? 'bg-rose-500/25 text-rose-400 ring-rose-500/40 hover:bg-rose-500/35'
-                    : 'bg-white/10 hover:bg-white/20 text-white ring-white/15'
+                    ? 'bg-rose-500/25 text-rose-400 ring-rose-500/45 hover:bg-rose-500/35'
+                    : 'bg-zinc-900/75 hover:bg-zinc-800/90 text-white ring-white/15 hover:ring-white/25'
                 }`}
               >
-                <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
+                <Heart className={`w-4 h-4 shrink-0 ${isLiked ? 'fill-current' : ''}`} />
               </button>
             )}
             {onShuffle && (
               <button
+                type="button"
                 onClick={onShuffle}
                 title="Surprise me with another recommendation"
                 aria-label="Surprise me"
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-full bg-white/10 hover:bg-white/20 text-zinc-200 hover:text-white font-medium text-sm backdrop-blur-xl ring-1 ring-white/15 active:scale-[0.97] transition-all"
+                className="h-11 px-5 rounded-full inline-flex items-center justify-center gap-2 bg-zinc-900/75 hover:bg-zinc-800/90 text-zinc-200 hover:text-white font-semibold text-sm sm:text-base leading-none backdrop-blur-xl ring-1 ring-inset ring-white/15 hover:ring-white/25 active:scale-[0.97] transition-all"
               >
-                <Shuffle className="w-4 h-4" />
-                Surprise me
+                <Shuffle className="w-4 h-4 shrink-0" />
+                <span className="text-trim">Surprise me</span>
               </button>
             )}
           </div>

@@ -42,12 +42,22 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = ({
           <h2 className="font-display text-lg sm:text-xl font-semibold text-white tracking-tight truncate">{title}</h2>
           {subtitle && <p className="text-xs text-zinc-500 mt-0.5 truncate">{subtitle}</p>}
         </div>
-        <div className="hidden sm:flex items-center gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
-          <button onClick={() => scroll(-1)} aria-label="Scroll left" className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/15 text-zinc-300 hover:text-white transition-colors">
-            <ChevronLeft className="w-4 h-4" />
+        <div className="hidden sm:flex items-center gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0">
+          <button
+            type="button"
+            onClick={() => scroll(-1)}
+            aria-label="Scroll left"
+            className="w-8 h-8 rounded-full inline-flex items-center justify-center bg-white/[0.06] hover:bg-white/15 text-zinc-300 hover:text-white transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4 shrink-0" />
           </button>
-          <button onClick={() => scroll(1)} aria-label="Scroll right" className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/15 text-zinc-300 hover:text-white transition-colors">
-            <ChevronRight className="w-4 h-4" />
+          <button
+            type="button"
+            onClick={() => scroll(1)}
+            aria-label="Scroll right"
+            className="w-8 h-8 rounded-full inline-flex items-center justify-center bg-white/[0.06] hover:bg-white/15 text-zinc-300 hover:text-white transition-colors"
+          >
+            <ChevronRight className="w-4 h-4 shrink-0" />
           </button>
         </div>
       </div>

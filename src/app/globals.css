@@ -72,6 +72,14 @@ dialog::backdrop {
   contain-intrinsic-size: auto none auto 340px;
 }
 
+/* Trim half-leading vertical metric space so text labels align dead-center beside icons inside pills/buttons. */
+.text-trim {
+  text-box: trim-both cap alphabetic;
+}
+.truncate.text-trim {
+  text-box: normal;
+}
+
 /* Subtitles: readable on any scene. */
 video::cue {
   background: rgba(0, 0, 0, 0.6);

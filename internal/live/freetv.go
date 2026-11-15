@@ -34,6 +34,8 @@ var (
 	reThemeDoc   = regexp.MustCompile(`(?i)documentar`)
 	reThemeMusic = regexp.MustCompile(`(?i)music`)
 	reThemeSport = regexp.MustCompile(`(?i)sport`)
+	reThemeKids  = regexp.MustCompile(`(?i)kids|children|cartoon|junior|youth`)
+	reKidsName   = regexp.MustCompile(`(?i)\b(kids|cbeebies|cbbc|kika|cartoonito|cartoon network|boomerang|gulli|nick jr\.?|nicktoons|nickelodeon|disney channel|disney junior|disney xd|babytv|ducktv|rai yoyo|rai gulp|ketnet|npo zapp|zappelin|toggo|super rtl|tiji|canal j|tiny pop)\b|\bboing\b|\.kids\b`)
 
 	freeTVMu    sync.RWMutex
 	freeTVCache []types.LiveChannel
@@ -107,6 +109,8 @@ func extractAttr(line, name string) string {
 
 func themedCategory(group string) (string, bool) {
 	switch {
+	case reThemeKids.MatchString(group):
+		return "Kids", true
 	case reThemeNews.MatchString(group):
 		return "News", true
 	case reThemeDoc.MatchString(group):
@@ -191,6 +195,8 @@ func ParseFreeTVPlaylist(m3u string) []types.LiveChannel {
 		category := "General"
 		if isThemed {
 			category = themeCat
+		} else if reKidsName.MatchString(name) {
+			category = "Kids"
 		} else if reNewsWord.MatchString(name) {
 			category = "News"
 		}

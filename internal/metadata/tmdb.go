@@ -256,6 +256,58 @@ var SampleMediaCatalog = []types.MediaItem{
 			},
 		},
 	},
+	{
+		ID:           "kids-movie-1",
+		ImdbID:       "tt0245429",
+		Title:        "Spirited Away",
+		Overview:     "During her family's move to the suburbs, a sullen 10-year-old girl wanders into a world ruled by gods, witches, and spirits, and where humans are changed into beasts.",
+		PosterPath:   types.StringPtr("https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop&q=80"),
+		BackdropPath: types.StringPtr("https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1920&auto=format&fit=crop&q=80"),
+		MediaType:    "movie",
+		ReleaseDate:  "2001-07-20",
+		VoteAverage:  8.6,
+		VoteCount:    types.IntPtr(16500),
+		Genres:       []string{"Animation", "Adventure", "Family", "Fantasy"},
+		Duration:     types.IntPtr(125),
+	},
+	{
+		ID:           "kids-movie-2",
+		ImdbID:       "tt4633694",
+		Title:        "Spider-Man: Into the Spider-Verse",
+		Overview:     "Teen Miles Morales becomes the Spider-Man of his universe and must join with five spider-powered individuals from other dimensions to stop a threat for all realities.",
+		PosterPath:   types.StringPtr("https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=80"),
+		BackdropPath: types.StringPtr("https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=1920&auto=format&fit=crop&q=80"),
+		MediaType:    "movie",
+		ReleaseDate:  "2018-12-14",
+		VoteAverage:  8.4,
+		VoteCount:    types.IntPtr(15400),
+		Genres:       []string{"Animation", "Action", "Adventure", "Family"},
+		Duration:     types.IntPtr(117),
+	},
+	{
+		ID:           "kids-tv-1",
+		ImdbID:       "tt0417299",
+		Title:        "Avatar: The Last Airbender",
+		Overview:     "In a war-torn world of elemental magic, a young boy reawakens to undertake a dangerous mystic quest to fulfill his destiny as the Avatar and bring peace to the world.",
+		PosterPath:   types.StringPtr("https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop&q=80"),
+		BackdropPath: types.StringPtr("https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1920&auto=format&fit=crop&q=80"),
+		MediaType:    "tv",
+		FirstAirDate: "2005-02-21",
+		VoteAverage:  9.3,
+		VoteCount:    types.IntPtr(11000),
+		Genres:       []string{"Animation", "Action", "Adventure", "Family", "Fantasy"},
+		Seasons: []types.Season{
+			{
+				SeasonNumber: 1,
+				Name:         "Book One: Water",
+				EpisodeCount: 20,
+				Episodes: []types.Episode{
+					{ID: 601, EpisodeNumber: 1, SeasonNumber: 1, Name: "The Boy in the Iceberg", Overview: "Katara and Sokka discover a mysterious boy frozen inside an iceberg.", StillPath: nil, VoteAverage: types.Float64Ptr(8.4)},
+					{ID: 602, EpisodeNumber: 2, SeasonNumber: 1, Name: "The Avatar Returns", Overview: "Aang reveals his powers as the long-lost Avatar to protect the Southern Water Tribe.", StillPath: nil, VoteAverage: types.Float64Ptr(8.6)},
+				},
+			},
+		},
+	},
 }
 
 type tmdbListItem struct {
@@ -272,6 +324,7 @@ type tmdbListItem struct {
 	FirstAirDate  string  `json:"first_air_date"`
 	VoteAverage   float64 `json:"vote_average"`
 	VoteCount     int     `json:"vote_count"`
+	GenreIDs      []int   `json:"genre_ids"`
 }
 
 type tmdbDetails struct {
@@ -521,6 +574,36 @@ func (s *TMDBService) GetDetails(ctx context.Context, id string, mediaType strin
 	}
 }
 
+var tmdbGenreByID = map[int]string{
+	28:    "Action",
+	12:    "Adventure",
+	16:    "Animation",
+	35:    "Comedy",
+	80:    "Crime",
+	99:    "Documentary",
+	18:    "Drama",
+	10751: "Family",
+	14:    "Fantasy",
+	36:    "History",
+	27:    "Horror",
+	10402: "Music",
+	9648:  "Mystery",
+	10749: "Romance",
+	878:   "Sci-Fi",
+	10770: "TV Movie",
+	53:    "Thriller",
+	10752: "War",
+	37:    "Western",
+	10759: "Action",
+	10762: "Kids",
+	10763: "News",
+	10764: "Reality",
+	10765: "Sci-Fi",
+	10766: "Soap",
+	10767: "Talk",
+	10768: "War",
+}
+
 func transformTMDBList(results []tmdbListItem) []types.MediaItem {
 	items := make([]types.MediaItem, 0, len(results))
 	for _, item := range results {
@@ -545,6 +628,12 @@ func transformTMDBList(results []tmdbListItem) []types.MediaItem {
 		if item.MediaType == "tv" || item.FirstAirDate != "" {
 			mediaType = "tv"
 		}
+		genres := make([]string, 0, len(item.GenreIDs))
+		for _, gid := range item.GenreIDs {
+			if name, ok := tmdbGenreByID[gid]; ok {
+				genres = append(genres, name)
+			}
+		}
 		vote := math.Round(item.VoteAverage*10) / 10
 		items = append(items, types.MediaItem{
 			ID:            item.ID,
@@ -559,7 +648,7 @@ func transformTMDBList(results []tmdbListItem) []types.MediaItem {
 			FirstAirDate:  item.FirstAirDate,
 			VoteAverage:   vote,
 			VoteCount:     types.IntPtr(item.VoteCount),
-			Genres:        []string{},
+			Genres:        genres,
 		})
 	}
 	return items

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Shuffle, Sparkles } from 'lucide-react';
+import { ShieldCheck, Shuffle, Sparkles } from 'lucide-react';
 import { Navbar, AppTab } from '@/components/Navbar';
 import { HeroBanner } from '@/components/HeroBanner';
 import { MediaCarousel, CarouselSkeleton } from '@/components/MediaCarousel';
@@ -9,11 +9,13 @@ import { buildMediaRequest, MediaDetailModal, PlaybackContext } from '@/componen
 import { VideoPlayerModal, SubtitleQuery, PlayableSource } from '@/components/VideoPlayerModal';
 import { rankSources } from '@/lib/streaming/pickSource';
 import { SettingsModal } from '@/components/SettingsModal';
+import { ProfileManagerModal } from '@/components/ProfileManagerModal';
 import { LiveChannelsGrid } from '@/components/LiveChannelsGrid';
 import { CatalogBrowser } from '@/components/CatalogBrowser';
 import { PageHeader } from '@/components/PageHeader';
 import { MediaItem, StreamSource, LiveChannel } from '@/types';
 import { FEATURED_HERO, SAMPLE_MEDIA_CATALOG } from '@/lib/metadata/sampleCatalog';
+import { filterKidsSafeMedia, isKidsSafeMedia, KIDS_TASTE_GENRES } from '@/lib/kidsFilter';
 import {
   getTasteProfile,
   isMediaLiked,
@@ -27,9 +29,12 @@ import {
   toggleLikedMedia,
 } from '@/lib/tasteProfile';
 import {
+  clearProfileLocalState,
   DEFAULT_HOUSEHOLD_PROFILES,
+  flushStateToServer,
   getActiveProfileId,
   getHouseholdProfiles,
+  getMemberDisplayName,
   getWatchProgressList,
   HouseholdMember,
   removeWatchProgress,
@@ -54,6 +59,41 @@ interface HomeData {
 
 const VALID_TABS = new Set<AppTab>(['home', 'movies', 'tv', 'anime', 'live']);
 const PROFILE_COLORS = ['rose', 'sky', 'emerald', 'amber', 'purple'] as const;
+
+function sanitizeTasteForProfile(profileTaste: TasteProfile, kidsMode: boolean): TasteProfile {
+  if (!kidsMode) return profileTaste;
+  const allowedGenres = new Set<string>(KIDS_TASTE_GENRES);
+  return {
+    ...profileTaste,
+    favoriteGenres: profileTaste.favoriteGenres.filter((g) => allowedGenres.has(g)),
+    likedItems: filterKidsSafeMedia(profileTaste.likedItems),
+  };
+}
+
+function buildHomeState(
+  rows: CatalogRow[],
+  profileTaste: TasteProfile,
+  fallbackFeatured: MediaItem | null,
+  kidsMode: boolean,
+  excludeHeroId?: string | number
+): { featured: MediaItem | null; rows: CatalogRow[]; storedTaste: TasteProfile } {
+  const safeRows = kidsMode
+    ? rows.map((r) => ({ ...r, items: filterKidsSafeMedia(r.items) })).filter((r) => r.items.length > 0)
+    : rows;
+  const effectiveTaste = sanitizeTasteForProfile(profileTaste, kidsMode);
+  const safeFallbackFeatured =
+    kidsMode && fallbackFeatured && !isKidsSafeMedia(fallbackFeatured)
+      ? safeRows[0]?.items[0] ?? null
+      : fallbackFeatured ?? safeRows[0]?.items[0] ?? null;
+  const hero = pickRandomHero(safeRows, effectiveTaste, excludeHeroId) ?? safeFallbackFeatured;
+  const storedTaste = hero ? rememberHeroId(hero.id) : profileTaste;
+  const personalizedTaste = sanitizeTasteForProfile(storedTaste, kidsMode);
+  return {
+    featured: hero,
+    rows: personalizeRows(safeRows, personalizedTaste),
+    storedTaste,
+  };
+}
 
 /** Compute the next (season, episode) in a TV/anime series. */
 function findNextEpisode(
@@ -95,14 +135,25 @@ function findNextEpisode(
 }
 
 /** Rows built from the bundled sample catalog; only used if the catalog API is unreachable. */
-function fallbackHome(data?: { featured?: MediaItem; trending?: MediaItem[]; movies?: MediaItem[]; series?: MediaItem[] }): HomeData {
-  const all = data?.trending?.length ? data.trending : SAMPLE_MEDIA_CATALOG;
+function fallbackHome(
+  data?: { featured?: MediaItem; trending?: MediaItem[]; movies?: MediaItem[]; series?: MediaItem[] },
+  kidsMode = false
+): HomeData {
+  const baseAll = data?.trending?.length ? data.trending : SAMPLE_MEDIA_CATALOG;
+  const all = kidsMode ? filterKidsSafeMedia(baseAll) : baseAll;
+  const moviesRaw = data?.movies?.length ? data.movies : all.filter((m) => m.mediaType === 'movie');
+  const seriesRaw = data?.series?.length ? data.series : all.filter((m) => m.mediaType === 'tv');
   const rows: CatalogRow[] = [
-    { key: 'trending', title: 'Trending now', items: all },
-    { key: 'movies', title: 'Movies', items: data?.movies?.length ? data.movies : all.filter((m) => m.mediaType === 'movie') },
-    { key: 'series', title: 'Series', items: data?.series?.length ? data.series : all.filter((m) => m.mediaType === 'tv') },
+    { key: 'trending', title: kidsMode ? 'Kids picks' : 'Trending now', items: all },
+    { key: 'movies', title: 'Movies', items: kidsMode ? filterKidsSafeMedia(moviesRaw) : moviesRaw },
+    { key: 'series', title: 'Series', items: kidsMode ? filterKidsSafeMedia(seriesRaw) : seriesRaw },
   ];
-  return { featured: data?.featured ?? FEATURED_HERO, rows: rows.filter((r) => r.items.length > 0) };
+  const featured = kidsMode
+    ? data?.featured && isKidsSafeMedia(data.featured)
+      ? data.featured
+      : all[0] ?? null
+    : data?.featured ?? FEATURED_HERO;
+  return { featured, rows: rows.filter((r) => r.items.length > 0) };
 }
 
 export default function Home() {
@@ -112,6 +163,7 @@ export default function Home() {
   const [home, setHome] = useState<HomeData | null>(null);
   const [profiles, setProfiles] = useState<HouseholdMember[]>(DEFAULT_HOUSEHOLD_PROFILES);
   const [activeProfileId, setActiveProfileState] = useState<string>('default');
+  const [profileReady, setProfileReady] = useState(false);
   const [taste, setTaste] = useState<TasteProfile>({
     genreScores: {},
     favoriteGenres: [],
@@ -122,6 +174,7 @@ export default function Home() {
 
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isProfileManagerOpen, setIsProfileManagerOpen] = useState(false);
   const [activePlayer, setActivePlayer] = useState<{
     key: string;
     title: string;
@@ -135,31 +188,41 @@ export default function Home() {
     episode?: number;
   } | null>(null);
 
-  // Sync initial state and browser Back/Forward with URL search params (?tab=, ?genre=, ?media=).
-  const applyUrlParams = useCallback((rowsData?: HomeData | null) => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get('tab') as AppTab | null;
-    if (tabParam && VALID_TABS.has(tabParam)) {
-      setActiveTab(tabParam);
-    } else {
-      setActiveTab('home');
-    }
-    setActiveGenre(params.get('genre'));
+  const activeMember = useMemo(
+    () => profiles.find((p) => p.id === activeProfileId) || profiles[0],
+    [profiles, activeProfileId]
+  );
+  const isKidsMode = Boolean(activeMember?.isKids);
 
-    const mediaParam = params.get('media');
-    if (!mediaParam) {
-      setSelectedMedia(null);
-    } else if (rowsData) {
-      const allItems = [
-        ...(rowsData.featured ? [rowsData.featured] : []),
-        ...rowsData.rows.flatMap((r) => r.items),
-        ...SAMPLE_MEDIA_CATALOG,
-      ];
-      const found = allItems.find((m) => String(m.imdbId || m.id) === mediaParam || String(m.id) === mediaParam);
-      if (found) setSelectedMedia(found);
-    }
-  }, []);
+  // Sync initial state and browser Back/Forward with URL search params (?tab=, ?genre=, ?media=).
+  const applyUrlParams = useCallback(
+    (rowsData?: HomeData | null, kidsOverride?: boolean) => {
+      if (typeof window === 'undefined') return;
+      const kids = kidsOverride ?? isKidsMode;
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as AppTab | null;
+      if (tabParam && VALID_TABS.has(tabParam)) {
+        setActiveTab(tabParam);
+      } else {
+        setActiveTab('home');
+      }
+      setActiveGenre(params.get('genre'));
+
+      const mediaParam = params.get('media');
+      if (!mediaParam) {
+        setSelectedMedia(null);
+      } else if (rowsData) {
+        const allItems = [
+          ...(rowsData.featured ? [rowsData.featured] : []),
+          ...rowsData.rows.flatMap((r) => r.items),
+          ...SAMPLE_MEDIA_CATALOG,
+        ];
+        const found = allItems.find((m) => String(m.imdbId || m.id) === mediaParam || String(m.id) === mediaParam);
+        if (found && (!kids || isKidsSafeMedia(found))) setSelectedMedia(found);
+      }
+    },
+    [isKidsMode]
+  );
 
   useEffect(() => {
     const onPopState = () => applyUrlParams(home);
@@ -180,94 +243,184 @@ export default function Home() {
     }
   }, []);
 
+  // Load persisted profile state and sync with LAN server once on mount.
   useEffect(() => {
-    const initialProfileId = getActiveProfileId();
+    const localProfiles = getHouseholdProfiles();
+    const rawActiveId = getActiveProfileId();
+    const initialProfileId = localProfiles.some((p) => p.id === rawActiveId)
+      ? rawActiveId
+      : setActiveProfileId(localProfiles[0].id);
+    setProfiles(localProfiles);
     setActiveProfileState(initialProfileId);
-    setProfiles(getHouseholdProfiles());
+    setTaste(getTasteProfile());
+    setWatchProgress(getWatchProgressList());
+    setProfileReady(true);
+
     syncStateFromServer(initialProfileId).then((synced) => {
       setProfiles(synced.profiles);
       setActiveProfileState(synced.profileId);
+      setTaste(getTasteProfile());
       setWatchProgress(synced.watchProgress);
     });
-    fetch('/api/media/trending')
+  }, []);
+
+  // Load home trending rows tailored to standard vs Kids mode.
+  useEffect(() => {
+    if (!profileReady) return;
+    let cancelled = false;
+    fetch(isKidsMode ? '/api/media/trending?kids=1' : '/api/media/trending')
       .then((res) => res.json())
       .then((data) => {
+        if (cancelled) return;
         const base =
           Array.isArray(data.rows) && data.rows.length > 0
-            ? { featured: data.featured ?? data.rows[0].items[0] ?? null, rows: data.rows as CatalogRow[] }
-            : fallbackHome(data);
+            ? { featured: data.featured ?? data.rows[0]?.items?.[0] ?? null, rows: data.rows as CatalogRow[] }
+            : fallbackHome(data, isKidsMode);
+        const sanitizedRows = isKidsMode
+          ? base.rows.map((r) => ({ ...r, items: filterKidsSafeMedia(r.items) })).filter((r) => r.items.length > 0)
+          : base.rows;
         const currentTaste = getTasteProfile();
-        setRawRows(base.rows);
-        const hero = pickRandomHero(base.rows, currentTaste) ?? base.featured;
-        const updatedTaste = hero ? rememberHeroId(hero.id) : currentTaste;
-        setTaste(updatedTaste);
-        setWatchProgress(getWatchProgressList());
-        const nextHome: HomeData = {
-          featured: hero,
-          rows: personalizeRows(base.rows, updatedTaste),
-        };
+        const built = buildHomeState(sanitizedRows, currentTaste, base.featured, isKidsMode);
+        setRawRows(sanitizedRows);
+        setTaste(built.storedTaste);
+        const nextHome: HomeData = { featured: built.featured, rows: built.rows };
         setHome(nextHome);
-        applyUrlParams(nextHome);
+        applyUrlParams(nextHome, isKidsMode);
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error('Failed to load catalog:', err);
-        const fallback = fallbackHome();
+        const fallback = fallbackHome(undefined, isKidsMode);
         setRawRows(fallback.rows);
         setHome(fallback);
-        applyUrlParams(fallback);
+        applyUrlParams(fallback, isKidsMode);
       });
-  }, [applyUrlParams]);
+    return () => {
+      cancelled = true;
+    };
+  }, [profileReady, isKidsMode, applyUrlParams]);
 
   const shuffleHome = useCallback(
-    (profileOverride?: TasteProfile) => {
+    (profileOverride?: TasteProfile, kidsOverride?: boolean) => {
       if (!rawRows.length) return;
-      const activeProfile = profileOverride ?? getTasteProfile();
-      const nextHero = pickRandomHero(rawRows, activeProfile, home?.featured?.id) ?? home?.featured ?? null;
-      const updatedProfile = nextHero ? rememberHeroId(nextHero.id) : activeProfile;
-      setTaste(updatedProfile);
-      setHome({
-        featured: nextHero,
-        rows: personalizeRows(rawRows, updatedProfile),
-      });
+      const kids = kidsOverride ?? isKidsMode;
+      const activeTaste = profileOverride ?? getTasteProfile();
+      const built = buildHomeState(rawRows, activeTaste, home?.featured ?? null, kids, home?.featured?.id);
+      setTaste(built.storedTaste);
+      setHome({ featured: built.featured, rows: built.rows });
     },
-    [rawRows, home?.featured]
+    [rawRows, home?.featured, isKidsMode]
   );
 
   const handleSwitchProfile = useCallback(
-    (profileId: string) => {
+    (profileId: string, profilesOverride?: HouseholdMember[]) => {
+      const list = profilesOverride ?? profiles;
+      const targetMember = list.find((p) => p.id === profileId) || list[0];
+      const nextIsKids = Boolean(targetMember?.isKids);
       const normalized = setActiveProfileId(profileId);
       setActiveProfileState(normalized);
       const nextTaste = getTasteProfile();
       setTaste(nextTaste);
       setWatchProgress(getWatchProgressList());
-      shuffleHome(nextTaste);
+
+      if (nextIsKids !== isKidsMode) {
+        // Clear stale rows immediately while trending?kids=... reloads.
+        setHome(null);
+        setRawRows([]);
+        if (nextIsKids) {
+          if (selectedMedia && !isKidsSafeMedia(selectedMedia)) {
+            setSelectedMedia(null);
+            updateUrl(activeTab, null, null);
+          } else if (activeGenre) {
+            setActiveGenre(null);
+            updateUrl(activeTab, null, selectedMedia);
+          }
+        }
+      } else {
+        shuffleHome(nextTaste, nextIsKids);
+      }
+
       syncStateFromServer(normalized).then((synced) => {
         setProfiles(synced.profiles);
+        setActiveProfileState(synced.profileId);
         setWatchProgress(synced.watchProgress);
       });
     },
-    [shuffleHome]
+    [profiles, isKidsMode, selectedMedia, activeGenre, activeTab, updateUrl, shuffleHome]
   );
 
   const handleAddProfile = useCallback(
-    (name: string) => {
+    async (name: string, isKids = false) => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      const id =
+      const baseId =
         trimmed
           .toLowerCase()
           .replace(/[^a-z0-9_-]/g, '-')
           .replace(/-+/g, '-')
           .replace(/^-|-$/g, '') || `member-${Date.now()}`;
-      const color = PROFILE_COLORS[profiles.length % PROFILE_COLORS.length];
-      const nextProfiles = profiles.some((p) => p.id === id)
-        ? profiles
-        : [...profiles, { id, name: trimmed, color }];
-      const saved = saveHouseholdProfiles(nextProfiles);
+      let uniqueId = baseId;
+      let suffix = 2;
+      while (profiles.some((p) => p.id === uniqueId)) {
+        uniqueId = `${baseId}-${suffix++}`;
+      }
+      const color = isKids ? 'emerald' : PROFILE_COLORS[profiles.length % PROFILE_COLORS.length];
+      const created: HouseholdMember = {
+        id: uniqueId,
+        name: trimmed,
+        color,
+        ...(isKids ? { isKids: true } : {}),
+      };
+      const saved = saveHouseholdProfiles([...profiles, created], false);
       setProfiles(saved);
-      handleSwitchProfile(id);
+      setActiveProfileId(uniqueId);
+      setActiveProfileState(uniqueId);
+      const nextTaste = getTasteProfile();
+      setTaste(nextTaste);
+      setWatchProgress(getWatchProgressList());
+      if (Boolean(isKids) !== isKidsMode) {
+        setHome(null);
+        setRawRows([]);
+      } else {
+        shuffleHome(nextTaste, isKids);
+      }
+      await flushStateToServer();
     },
-    [profiles, handleSwitchProfile]
+    [profiles, isKidsMode, shuffleHome]
+  );
+
+  const handleSaveProfiles = useCallback(
+    async (nextProfiles: HouseholdMember[], deletedIds: string[]) => {
+      for (const id of deletedIds) {
+        clearProfileLocalState(id);
+      }
+      const saved = saveHouseholdProfiles(nextProfiles, false);
+      setProfiles(saved);
+
+      const activeStillExists = saved.some((p) => p.id === activeProfileId);
+      const nextId = activeStillExists ? activeProfileId : saved[0].id;
+      const nextMember = saved.find((p) => p.id === nextId) || saved[0];
+      const nextIsKids = Boolean(nextMember?.isKids);
+
+      if (!activeStillExists) {
+        setActiveProfileId(nextId);
+        setActiveProfileState(nextId);
+        const nextTaste = getTasteProfile();
+        setTaste(nextTaste);
+        setWatchProgress(getWatchProgressList());
+      }
+      if (nextIsKids !== isKidsMode) {
+        setHome(null);
+        setRawRows([]);
+        if (nextIsKids && selectedMedia && !isKidsSafeMedia(selectedMedia)) {
+          setSelectedMedia(null);
+        }
+      } else if (!activeStillExists && rawRows.length) {
+        shuffleHome(getTasteProfile(), nextIsKids);
+      }
+      await flushStateToServer();
+    },
+    [activeProfileId, isKidsMode, selectedMedia, rawRows.length, shuffleHome]
   );
 
   const handleToggleFavoriteGenre = (genre: string) => {
@@ -279,11 +432,12 @@ export default function Home() {
     const { profile: nextProfile } = toggleLikedMedia(media);
     setTaste(nextProfile);
     if (rawRows.length) {
+      const effectiveTaste = sanitizeTasteForProfile(nextProfile, isKidsMode);
       setHome((prev) =>
         prev
           ? {
               ...prev,
-              rows: personalizeRows(rawRows, nextProfile),
+              rows: personalizeRows(rawRows, effectiveTaste),
             }
           : prev
       );
@@ -409,7 +563,11 @@ export default function Home() {
     };
   }, [activePlayer, handlePlaySource]);
 
-  const continueWatchingItems = useMemo(() => watchProgress.map((w) => w.media), [watchProgress]);
+  const continueWatchingItems = useMemo(() => {
+    const items = watchProgress.map((w) => w.media);
+    return isKidsMode ? filterKidsSafeMedia(items) : items;
+  }, [watchProgress, isKidsMode]);
+
   const progressByMediaId = useMemo(() => {
     const map: Record<string, { ratio: number; label: string }> = {};
     for (const entry of watchProgress) {
@@ -430,6 +588,8 @@ export default function Home() {
     return map;
   }, [watchProgress]);
 
+  const tasteGenres = isKidsMode ? KIDS_TASTE_GENRES : POPULAR_TASTE_GENRES;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar
@@ -440,8 +600,9 @@ export default function Home() {
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         profiles={profiles}
         activeProfileId={activeProfileId}
-        onSwitchProfile={handleSwitchProfile}
-        onAddProfile={handleAddProfile}
+        onSwitchProfile={(id) => handleSwitchProfile(id)}
+        onAddProfile={(name, kids) => void handleAddProfile(name, kids)}
+        onOpenProfileManager={() => setIsProfileManagerOpen(true)}
       />
 
       {activeTab === 'home' ? (
@@ -457,11 +618,18 @@ export default function Home() {
           <div className="relative z-10 -mt-8 sm:-mt-12 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 space-y-10 sm:space-y-12">
             {/* Personalization & Shuffle Bar */}
             <div className="flex flex-wrap items-center gap-2 pt-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 mr-1">
-                <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                Your taste:
-              </span>
-              {POPULAR_TASTE_GENRES.map((g) => {
+              {isKidsMode ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 mr-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-trim">Kids taste ({getMemberDisplayName(activeMember)}):</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 mr-1">
+                  <Sparkles className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span className="text-trim">Your taste:</span>
+                </span>
+              )}
+              {tasteGenres.map((g) => {
                 const active = taste.favoriteGenres.includes(g);
                 return (
                   <button
@@ -469,23 +637,23 @@ export default function Home() {
                     type="button"
                     aria-pressed={active}
                     onClick={() => handleToggleFavoriteGenre(g)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    className={`h-7 px-3 rounded-full inline-flex items-center justify-center text-xs font-medium leading-none transition-colors ${
                       active
                         ? 'bg-gradient-to-r from-rose-500 to-orange-400 text-white shadow-sm shadow-rose-950/50'
                         : 'bg-white/[0.05] text-zinc-300 ring-1 ring-inset ring-white/[0.08] hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    {g}
+                    <span className="text-trim">{g}</span>
                   </button>
                 );
               })}
               <button
                 type="button"
                 onClick={() => shuffleHome()}
-                className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-white/[0.07] hover:bg-white/15 text-xs font-medium text-zinc-200 hover:text-white ring-1 ring-inset ring-white/10 transition-colors"
+                className="ml-auto h-7 px-3.5 rounded-full inline-flex items-center justify-center gap-1.5 bg-white/[0.07] hover:bg-white/15 text-xs font-medium leading-none text-zinc-200 hover:text-white ring-1 ring-inset ring-white/10 transition-colors"
               >
-                <Shuffle className="w-3.5 h-3.5 text-rose-400" />
-                Shuffle picks
+                <Shuffle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span className="text-trim">Shuffle picks</span>
               </button>
             </div>
 
@@ -519,38 +687,62 @@ export default function Home() {
         <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-32 md:pt-28 pb-24">
           {activeTab === 'movies' && (
             <>
-              <PageHeader eyebrow="Browse" title="Movies" description="Popular films, by genre or by year." />
+              <PageHeader
+                eyebrow={isKidsMode ? 'Kids · Browse' : 'Browse'}
+                title={isKidsMode ? 'Kids Movies' : 'Movies'}
+                description={isKidsMode ? 'Family-friendly films and animations, by genre or by year.' : 'Popular films, by genre or by year.'}
+              />
               <CatalogBrowser
+                key={`movies-${isKidsMode ? 'kids' : 'std'}`}
                 mediaType="movie"
                 onSelectMedia={selectMedia}
                 initialGenre={activeGenre}
                 onGenreChange={handleGenreChange}
+                isKidsMode={isKidsMode}
               />
             </>
           )}
           {activeTab === 'tv' && (
             <>
-              <PageHeader eyebrow="Browse" title="Series" description="Every season and episode, ready to stream." />
+              <PageHeader
+                eyebrow={isKidsMode ? 'Kids · Browse' : 'Browse'}
+                title={isKidsMode ? 'Kids Series' : 'Series'}
+                description={isKidsMode ? 'Family series and animated shows, ready to stream.' : 'Every season and episode, ready to stream.'}
+              />
               <CatalogBrowser
+                key={`tv-${isKidsMode ? 'kids' : 'std'}`}
                 mediaType="tv"
                 onSelectMedia={selectMedia}
                 initialGenre={activeGenre}
                 onGenreChange={handleGenreChange}
+                isKidsMode={isKidsMode}
               />
             </>
           )}
           {activeTab === 'anime' && (
             <>
-              <PageHeader eyebrow="Browse" title="Anime" description="Trending, seasonal and all-time favourites, powered by AniList." />
+              <PageHeader
+                eyebrow={isKidsMode ? 'Kids · Browse' : 'Browse'}
+                title={isKidsMode ? 'Kids Anime' : 'Anime'}
+                description="Trending, seasonal and all-time favourites, powered by AniList."
+              />
               <CatalogBrowser
+                key={`anime-${isKidsMode ? 'kids' : 'std'}`}
                 mediaType="anime"
                 onSelectMedia={selectMedia}
                 initialGenre={activeGenre}
                 onGenreChange={handleGenreChange}
+                isKidsMode={isKidsMode}
               />
             </>
           )}
-          {activeTab === 'live' && <LiveChannelsGrid key={activeProfileId} onPlayChannel={handlePlayLiveChannel} />}
+          {activeTab === 'live' && (
+            <LiveChannelsGrid
+              key={`${activeProfileId}-${isKidsMode ? 'kids' : 'std'}`}
+              onPlayChannel={handlePlayLiveChannel}
+              isKidsMode={isKidsMode}
+            />
+          )}
         </main>
       )}
 
@@ -566,6 +758,16 @@ export default function Home() {
       )}
 
       {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} />}
+
+      {isProfileManagerOpen && (
+        <ProfileManagerModal
+          profiles={profiles}
+          activeProfileId={activeProfileId}
+          onSaveProfiles={(next, deleted) => void handleSaveProfiles(next, deleted)}
+          onSwitchProfile={(id) => handleSwitchProfile(id)}
+          onClose={() => setIsProfileManagerOpen(false)}
+        />
+      )}
 
       {activePlayer && (
         <VideoPlayerModal

@@ -8,4 +8,4 @@ requirements: [REQ-0010]
 ---
 
 ## Purpose
-Layers live television onto the streaming dashboard: aggregating ~1,700 free-to-air IPTV and curated international channels with category/country/favorite filters, bounded batch on-air stream verification, and a server-side HLS manifest and segment proxy that rewrites relative and attribute URIs.
+Layers live television onto the streaming dashboard: serving ~1,700 free-to-air IPTV channels directly (with curated international broadcaster fallback) alongside `Kids` channel classification, category/country/favorite filters, bounded batch on-air stream verification, and a server-side HLS manifest and segment proxy that rewrites relative and attribute URIs.

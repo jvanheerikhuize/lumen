@@ -7,14 +7,14 @@ because: [FCT-0007, FCT-0008]
 
 ## Statement
 The system MUST provide a searchable, filterable directory of free-to-air live television channels with strict per-country filtering, background on-air verification, and a server-side HLS stream relay:
-1. **Channel aggregation & strict country filtering**: Merge curated public broadcasters and community IPTV country playlists (~1,700 channels) with canonical country names and ISO 3166-1 alpha-2 country codes (`DE`, `US`, `FR`, `JP`, `TR`, `NL`, `GB`, etc., or `International` for global feeds). Filtering by country MUST strictly return only channels attributed to the selected country without pinning unrelated curated channels from other countries on top; additional filters support category (`News`, `Sports`, `Entertainment`, `Movies`, `Music`, `Science`, `Kids`, `General`), search query, and pinned favorites.
-2. **Batch liveness probing (`/api/live/status`)**: Probe up to `24` stream URLs per request (`concurrency = 8`, `6s` timeout, `15-minute` server cache TTL) by verifying that the target returns a valid `#EXTM3U` playlist or `video/*` / `application/octet-stream` response, hiding confirmed-offline channels when the **"On Air Only"** filter is active.
+1. **Direct Free-TV aggregation & strict country filtering**: Serve the community IPTV playlist directory (~1,700 channels) directly with canonical country names and ISO 3166-1 alpha-2 country codes (`DE`, `US`, `FR`, `JP`, `TR`, `NL`, `GB`, etc., or `International` for global feeds), falling back to a curated broadcaster list only if the upstream directory is unreachable. Filtering MUST NOT pin curated channels ahead of the directory ordering and MUST strictly return only channels attributed to the selected country; additional filters support `Kids` auto-classification and category tabs (`Kids`, `News`, `Sports`, `Documentary`, `Music & Culture`, `Entertainment`, `General`), search query, and pinned favorites.
+2. **Batch liveness probing (`/api/live/status`)**: Probe up to `24` stream URLs per request (`concurrency = 8`, `6s` timeout, `15-minute` server cache TTL) by verifying that the target returns a valid `#EXTM3U` playlist or `video/*` / `application/octet-stream` response, hiding confirmed-offline channels when **"show offline"** is unchecked.
 3. **HLS manifest & segment relay (`/api/live/proxy`)**: Proxy `.m3u8` manifests and media segments with `Access-Control-Allow-Origin: *`, rewriting all non-comment lines (variant playlists, relative segment paths, and `URI="..."` attributes inside `#EXT-X-KEY` / `#EXT-X-MAP`) to route through `/api/live/proxy?url=...`.
 
 ## Acceptance
-- Given a viewer in the Live TV directory who selects a specific country (such as Netherlands or Japan)
+- Given a viewer in the Live TV directory viewing All countries or selecting a specific country (such as United States or Japan)
 - When the channel grid renders
-- Then only channels attributed to that selected country are displayed, without unrelated curated channels from other countries appearing at the top
+- Then stations appear directly from the community IPTV directory without curated channels pinned to the first row, and only channels attributed to the selected country are displayed
 
 - Given a live television channel whose upstream `.m3u8` playlist uses relative segment paths and lacks CORS headers
 - When the client plays the channel through the live proxy

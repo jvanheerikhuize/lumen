@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 const sampleFreeTVM3U = `#EXTM3U
@@ -132,6 +133,78 @@ func TestCuratedLiveChannelsHaveCountryAttribution(t *testing.T) {
 		if want, ok := wantCode[ch.ID]; ok && ch.CountryCode != want {
 			t.Fatalf("channel %s expected CountryCode=%q, got %q", ch.ID, want, ch.CountryCode)
 		}
+		if ch.ID == "redbull-tv" && strings.Contains(ch.Logo, "7c2K3ad") {
+			t.Fatalf("expected broken Red Bull Imgur logo to be removed, got %q", ch.Logo)
+		}
 	}
 }
+
+func TestParseFreeTVPlaylistKidsCategory(t *testing.T) {
+	m3u := strings.Join([]string{
+		"#EXTM3U",
+		`#EXTINF:-1 group-title="United Kingdom",CBBC`,
+		"https://example.com/cbbc.m3u8",
+		`#EXTINF:-1 group-title="Kids",Duck TV`,
+		"https://example.com/ducktv.m3u8",
+		`#EXTINF:-1 group-title="Germany",KiKA`,
+		"https://example.com/kika.m3u8",
+		`#EXTINF:-1 group-title="Netherlands",NOS Journaal`,
+		"https://example.com/nos.m3u8",
+	}, "\n")
+
+	channels := ParseFreeTVPlaylist(m3u)
+	if len(channels) != 4 {
+		t.Fatalf("expected 4 channels, got %d", len(channels))
+	}
+	if channels[0].Category != "Kids" || channels[0].CountryCode != "GB" {
+		t.Fatalf("expected CBBC to be Kids/GB, got %+v", channels[0])
+	}
+	if channels[1].Category != "Kids" || channels[1].Country != "International" {
+		t.Fatalf("expected Duck TV to be Kids/International, got %+v", channels[1])
+	}
+	if channels[2].Category != "Kids" || channels[2].CountryCode != "DE" {
+		t.Fatalf("expected KiKA to be Kids/DE, got %+v", channels[2])
+	}
+	if channels[3].Category != "General" || channels[3].CountryCode != "NL" {
+		t.Fatalf("expected NOS Journaal to remain General/NL, got %+v", channels[3])
+	}
+}
+
+func TestGetAllChannelsReturnsFreeTVDirectly(t *testing.T) {
+	freeTVMu.Lock()
+	prevCache := freeTVCache
+	prevAt := freeTVAt
+	freeTVCache = ParseFreeTVPlaylist(sampleFreeTVM3U)
+	freeTVAt = time.Now()
+	freeTVMu.Unlock()
+	defer func() {
+		freeTVMu.Lock()
+		freeTVCache = prevCache
+		freeTVAt = prevAt
+		freeTVMu.Unlock()
+	}()
+
+	channels := GetAllChannels(context.Background())
+	if len(channels) != 2 {
+		t.Fatalf("expected 2 Free-TV channels directly without prepended curated channels, got %d (%+v)", len(channels), channels)
+	}
+	if channels[0].Source != "freetv" || channels[0].Name != "DW" {
+		t.Fatalf("expected first channel to be Free-TV DW, got %+v", channels[0])
+	}
+
+	// Clearing cache falls back to curated LiveChannels
+	freeTVMu.Lock()
+	freeTVCache = nil
+	freeTVAt = time.Time{}
+	freeTVMu.Unlock()
+	origURLs := freeTVPlaylistURLs
+	freeTVPlaylistURLs = nil
+	defer func() { freeTVPlaylistURLs = origURLs }()
+
+	fallback := GetAllChannels(context.Background())
+	if len(fallback) != len(LiveChannels) || fallback[0].Source != "curated" {
+		t.Fatalf("expected curated fallback when Free-TV is unavailable, got %d channels", len(fallback))
+	}
+}
+
 

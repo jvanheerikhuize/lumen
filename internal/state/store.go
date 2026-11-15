@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,16 +43,18 @@ type WatchProgressEntry struct {
 
 // HouseholdMember represents a member profile in the household.
 type HouseholdMember struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Nickname string `json:"nickname,omitempty"`
+	Color    string `json:"color"`
+	IsKids   bool   `json:"isKids,omitempty"`
 }
 
 // DefaultHouseholdMembers are the initial household member profiles.
 var DefaultHouseholdMembers = []HouseholdMember{
 	{ID: "default", Name: "Member 1", Color: "rose"},
 	{ID: "member-2", Name: "Member 2", Color: "sky"},
-	{ID: "kids", Name: "Kids", Color: "emerald"},
+	{ID: "kids", Name: "Kids", Color: "emerald", IsKids: true},
 }
 
 // HouseholdState is the wire payload returned by GET/PUT /api/state.
@@ -302,7 +305,9 @@ func NewStore(dataDir string) (*Store, error) {
 	CREATE TABLE IF NOT EXISTS household_profiles (
 		profile_id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
+		nickname TEXT NOT NULL DEFAULT '',
 		color TEXT NOT NULL,
+		is_kids INTEGER NOT NULL DEFAULT 0,
 		position_order INTEGER NOT NULL
 	);
 	`
@@ -315,6 +320,7 @@ func NewStore(dataDir string) (*Store, error) {
 		db:      db,
 		dataDir: dataDir,
 	}
+	s.ensureProfileColumns()
 	s.ensureDefaultProfiles()
 	s.migrateLegacyTablesAndJSONIfEmpty()
 	return s, nil
@@ -328,15 +334,47 @@ func (s *Store) Close() error {
 	return nil
 }
 
+func (s *Store) ensureProfileColumns() {
+	rows, err := s.db.Query(`PRAGMA table_info(household_profiles)`)
+	if err != nil {
+		return
+	}
+	cols := make(map[string]bool)
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+			cols[name] = true
+		}
+	}
+	_ = rows.Close()
+
+	if !cols["nickname"] {
+		_, _ = s.db.Exec(`ALTER TABLE household_profiles ADD COLUMN nickname TEXT NOT NULL DEFAULT ''`)
+	}
+	if !cols["is_kids"] {
+		if _, err := s.db.Exec(`ALTER TABLE household_profiles ADD COLUMN is_kids INTEGER NOT NULL DEFAULT 0`); err == nil {
+			_, _ = s.db.Exec(`UPDATE household_profiles SET is_kids = 1 WHERE profile_id = 'kids'`)
+		}
+	}
+}
+
 func (s *Store) ensureDefaultProfiles() {
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM household_profiles`).Scan(&count); err != nil || count > 0 {
 		return
 	}
 	for idx, m := range DefaultHouseholdMembers {
+		isKidsInt := 0
+		if m.IsKids {
+			isKidsInt = 1
+		}
 		_, _ = s.db.Exec(
-			`INSERT OR IGNORE INTO household_profiles (profile_id, name, color, position_order) VALUES (?, ?, ?, ?)`,
-			m.ID, m.Name, m.Color, idx,
+			`INSERT OR IGNORE INTO household_profiles (profile_id, name, nickname, color, is_kids, position_order) VALUES (?, ?, ?, ?, ?, ?)`,
+			m.ID, m.Name, m.Nickname, m.Color, isKidsInt, idx,
 		)
 	}
 }
@@ -393,7 +431,7 @@ func (s *Store) GetStateForProfile(ctx context.Context, profileID string) (House
 }
 
 func (s *Store) readProfilesLocked(ctx context.Context) []HouseholdMember {
-	rows, err := s.db.QueryContext(ctx, `SELECT profile_id, name, color FROM household_profiles ORDER BY position_order ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT profile_id, name, nickname, color, is_kids FROM household_profiles ORDER BY position_order ASC`)
 	if err != nil {
 		return DefaultHouseholdMembers
 	}
@@ -401,7 +439,9 @@ func (s *Store) readProfilesLocked(ctx context.Context) []HouseholdMember {
 	var list []HouseholdMember
 	for rows.Next() {
 		var m HouseholdMember
-		if err := rows.Scan(&m.ID, &m.Name, &m.Color); err == nil && m.ID != "" {
+		var isKidsInt int
+		if err := rows.Scan(&m.ID, &m.Name, &m.Nickname, &m.Color, &isKidsInt); err == nil && m.ID != "" {
+			m.IsKids = isKidsInt != 0
 			list = append(list, m)
 		}
 	}
@@ -486,20 +526,56 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 	now := time.Now().UnixMilli()
 
 	if patch.Profiles != nil && len(*patch.Profiles) > 0 {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM household_profiles`)
-		for idx, p := range *patch.Profiles {
-			if p.ID == "" || p.Name == "" {
+		seenProfiles := make(map[string]bool)
+		var validProfiles []HouseholdMember
+		for _, p := range *patch.Profiles {
+			id := strings.TrimSpace(p.ID)
+			name := strings.TrimSpace(p.Name)
+			if id == "" || name == "" || seenProfiles[id] {
 				continue
 			}
-			color := p.Color
+			seenProfiles[id] = true
+			color := strings.TrimSpace(p.Color)
 			if color == "" {
 				color = "rose"
 			}
-			_, _ = tx.ExecContext(
-				ctx,
-				`INSERT INTO household_profiles (profile_id, name, color, position_order) VALUES (?, ?, ?, ?)`,
-				p.ID, p.Name, color, idx,
-			)
+			validProfiles = append(validProfiles, HouseholdMember{
+				ID:       id,
+				Name:     name,
+				Nickname: strings.TrimSpace(p.Nickname),
+				Color:    color,
+				IsKids:   p.IsKids,
+			})
+		}
+		if len(validProfiles) > 0 {
+			existingRows, err := tx.QueryContext(ctx, `SELECT profile_id FROM household_profiles`)
+			if err == nil {
+				var orphanIDs []string
+				for existingRows.Next() {
+					var existingID string
+					if err := existingRows.Scan(&existingID); err == nil && existingID != "" && !seenProfiles[existingID] {
+						orphanIDs = append(orphanIDs, existingID)
+					}
+				}
+				_ = existingRows.Close()
+				for _, orphanID := range orphanIDs {
+					_, _ = tx.ExecContext(ctx, `DELETE FROM profile_watch_progress WHERE profile_id = ?`, orphanID)
+					_, _ = tx.ExecContext(ctx, `DELETE FROM profile_favorite_channels WHERE profile_id = ?`, orphanID)
+				}
+			}
+
+			_, _ = tx.ExecContext(ctx, `DELETE FROM household_profiles`)
+			for idx, p := range validProfiles {
+				isKidsInt := 0
+				if p.IsKids {
+					isKidsInt = 1
+				}
+				_, _ = tx.ExecContext(
+					ctx,
+					`INSERT INTO household_profiles (profile_id, name, nickname, color, is_kids, position_order) VALUES (?, ?, ?, ?, ?, ?)`,
+					p.ID, p.Name, p.Nickname, p.Color, isKidsInt, idx,
+				)
+			}
 		}
 	}
 

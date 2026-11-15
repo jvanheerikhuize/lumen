@@ -6,6 +6,7 @@ import {
   Captions, AlertCircle, Check, SkipForward, SkipBack, Layers, PictureInPicture2, Languages,
 } from 'lucide-react';
 import Hls from 'hls.js';
+import { SelectDropdown } from '@/components/SelectDropdown';
 import { formatLang, getPreferredSubtitleLang, matchesLanguage, setPreferredSubtitleLang } from '@/lib/subtitleLanguages';
 
 export interface SubtitleQuery {
@@ -185,6 +186,13 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
   const [audioMenuOpen, setAudioMenuOpen] = useState(false);
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
+
+  const legendMenuRef = useRef<HTMLDivElement>(null);
+  const audioMenuRef = useRef<HTMLDivElement>(null);
+  const sourceMenuRef = useRef<HTMLDivElement>(null);
+  const subMenuRef = useRef<HTMLDivElement>(null);
 
   const wantPlay = useRef(true);
   const autoPausing = useRef(false);
@@ -748,6 +756,9 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (fileMenuOpen || speedMenuOpen || (e.target as HTMLElement | null)?.closest('[role="listbox"]')) {
+        return;
+      }
       revealControls();
       switch (e.key.toLowerCase()) {
         case ' ':
@@ -810,6 +821,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   }, [
     togglePlay, toggleFullscreen, togglePip, toggleMute, revealControls, onClose,
     subtitles, activeSub, subMenuOpen, sourceMenuOpen, audioMenuOpen, legendOpen,
+    fileMenuOpen, speedMenuOpen,
     seekTo, chooseSubtitle, adjustSubtitleDelay, isLive, sources.length, sourceIndex, selectSource,
   ]);
 
@@ -829,9 +841,29 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     statusText = isLive ? 'Connecting…' : `Buffering… ${Math.min(Math.floor(ahead), bufferTarget)} / ${bufferTarget}s`;
   }
   const canSkipSource = sources.length > sourceIndex + 1;
-  const anyMenuOpen = subMenuOpen || sourceMenuOpen || audioMenuOpen || legendOpen;
+  const anyMenuOpen = subMenuOpen || sourceMenuOpen || audioMenuOpen || legendOpen || fileMenuOpen || speedMenuOpen;
   const controlsVisible = showControls || !isPlaying || buffering || anyMenuOpen;
   const showSubButton = Boolean(subtitleQuery?.imdbId) || embeddedSubs.length > 0;
+
+  useEffect(() => {
+    if (!subMenuOpen && !sourceMenuOpen && !audioMenuOpen && !legendOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const inAny =
+        legendMenuRef.current?.contains(target) ||
+        audioMenuRef.current?.contains(target) ||
+        sourceMenuRef.current?.contains(target) ||
+        subMenuRef.current?.contains(target);
+      if (!inAny) {
+        setSubMenuOpen(false);
+        setSourceMenuOpen(false);
+        setAudioMenuOpen(false);
+        setLegendOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [subMenuOpen, sourceMenuOpen, audioMenuOpen, legendOpen]);
 
   return (
     <div
@@ -947,11 +979,12 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           )}
           {canSkipSource && (
             <button
+              type="button"
               onClick={() => tryNextSource('Skipped.', phase === 'ready')}
-              className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white"
+              className="mt-1 h-9 px-3.5 rounded-lg inline-flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/20 text-xs font-semibold leading-none text-white transition-colors"
             >
-              <SkipForward className="w-3.5 h-3.5" />
-              Try another source
+              <SkipForward className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-trim">Try another source</span>
             </button>
           )}
           {sources.length > 1 && <p className="text-[11px] text-zinc-500">Source {sourceIndex + 1} of {sources.length}</p>}
@@ -972,14 +1005,19 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
             <div className="flex items-center justify-center gap-2">
               {sources.length > 1 && (
                 <button
+                  type="button"
                   onClick={() => selectSource((sourceIndex + 1) % sources.length, !isLive)}
-                  className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold"
+                  className="h-10 px-4 rounded-xl inline-flex items-center justify-center bg-white/10 hover:bg-white/15 text-white text-sm font-semibold leading-none transition-colors"
                 >
-                  {isLive ? 'Next channel' : 'Try next source'}
+                  <span className="text-trim">{isLive ? 'Next channel' : 'Try next source'}</span>
                 </button>
               )}
-              <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold">
-                Back
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-10 px-5 rounded-xl inline-flex items-center justify-center bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold leading-none transition-colors"
+              >
+                <span className="text-trim">Back</span>
               </button>
             </div>
           </div>
@@ -993,10 +1031,11 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
         }`}
       >
         <button
+          type="button"
           onClick={onClose}
           title="Close (Esc)"
           aria-label="Close player"
-          className="p-2.5 rounded-full bg-zinc-900/80 hover:bg-zinc-800 text-white border border-zinc-700/60"
+          className="w-10 h-10 rounded-full inline-flex items-center justify-center bg-zinc-900/85 hover:bg-zinc-800 text-white ring-1 ring-inset ring-white/15 shadow-lg transition-colors shrink-0"
         >
           <X className="w-5 h-5" />
         </button>
@@ -1005,7 +1044,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
       {/* Up Next overlay in final 35s of an episode */}
       {nextEpisode && !isLive && duration > 60 && duration - currentTime <= 35 && duration - currentTime > 0 && !error && (
-        <div className="absolute bottom-24 right-6 z-20 flex items-center gap-3 px-4 py-3 rounded-2xl bg-zinc-900/95 border border-white/15 shadow-2xl backdrop-blur-md">
+        <div className="absolute bottom-24 right-6 z-20 flex items-center gap-3 px-4 py-3 rounded-2xl bg-zinc-900/95 ring-1 ring-white/15 shadow-2xl backdrop-blur-2xl">
           <div className="text-left">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-400">
               Up next in {Math.max(1, Math.ceil(duration - currentTime))}s
@@ -1013,11 +1052,12 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
             <p className="text-sm font-semibold text-white">{nextEpisode.label}</p>
           </div>
           <button
+            type="button"
             onClick={nextEpisode.onPlayNext}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-zinc-200 text-black text-xs font-semibold shadow-lg transition-all"
+            className="h-9 px-4 rounded-full inline-flex items-center justify-center gap-1.5 bg-white hover:bg-zinc-200 text-black text-xs font-semibold leading-none shadow-lg transition-all shrink-0"
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            Play now
+            <Play className="w-3.5 h-3.5 fill-current shrink-0" />
+            <span className="text-trim">Play now</span>
           </button>
         </div>
       )}
@@ -1170,31 +1210,34 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           <button
+            type="button"
             onClick={togglePlay}
             title={isPlaying ? 'Pause (Space / K)' : 'Play (Space / K)'}
             aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="p-2 rounded-full bg-white text-black hover:bg-zinc-200"
+            className="w-9 h-9 rounded-full inline-flex items-center justify-center bg-white text-black hover:bg-zinc-200 transition-colors shrink-0"
           >
-            {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+            {isPlaying ? <Pause className="w-5 h-5 fill-current shrink-0" /> : <Play className="w-5 h-5 fill-current shrink-0" />}
           </button>
 
           {isLive && sources.length > 1 && (
             <>
               <button
+                type="button"
                 onClick={() => selectSource((sourceIndex - 1 + sources.length) % sources.length, false)}
                 title="Previous channel (↑)"
                 aria-label="Previous channel"
-                className="p-2 text-zinc-300 hover:text-white"
+                className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
               >
                 <SkipBack className="w-5 h-5" />
               </button>
               <button
+                type="button"
                 onClick={() => selectSource((sourceIndex + 1) % sources.length, false)}
                 title="Next channel (↓)"
                 aria-label="Next channel"
-                className="p-2 text-zinc-300 hover:text-white"
+                className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
               >
                 <SkipForward className="w-5 h-5" />
               </button>
@@ -1204,27 +1247,30 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           {!isLive && (
             <>
               <button
+                type="button"
                 onClick={() => seekTo(currentTime - 10)}
                 title="Back 10 seconds (←)"
                 aria-label="Back 10 seconds"
-                className="p-2 text-zinc-300 hover:text-white"
+                className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
               >
                 <RotateCcw className="w-5 h-5" />
               </button>
               <button
+                type="button"
                 onClick={() => seekTo(currentTime + 10)}
                 title="Forward 10 seconds (→)"
                 aria-label="Forward 10 seconds"
-                className="p-2 text-zinc-300 hover:text-white"
+                className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
               >
                 <RotateCw className="w-5 h-5" />
               </button>
               {nextEpisode && (
                 <button
+                  type="button"
                   onClick={nextEpisode.onPlayNext}
                   title={`Next episode: ${nextEpisode.label}`}
                   aria-label="Next episode"
-                  className="p-2 text-zinc-300 hover:text-white"
+                  className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
                 >
                   <SkipForward className="w-5 h-5" />
                 </button>
@@ -1234,10 +1280,11 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={toggleMute}
               title={muted ? 'Unmute (M)' : 'Mute (M)'}
               aria-label={muted ? 'Unmute' : 'Mute'}
-              className="p-2 text-zinc-300 hover:text-white"
+              className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
             >
               {muted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
             </button>
@@ -1266,7 +1313,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
           {/* Stream & Download Status Pill + Interactive Timeline Legend */}
           {!isLive && (
-            <div className="relative hidden md:block">
+            <div ref={legendMenuRef} className="relative hidden md:block">
               <button
                 type="button"
                 onClick={() => {
@@ -1276,7 +1323,8 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   setAudioMenuOpen(false);
                 }}
                 title="View timeline colors & stream details"
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors border ${
+                aria-expanded={legendOpen}
+                className={`h-7 inline-flex items-center justify-center gap-1.5 px-2.5 rounded-full text-[11px] font-medium leading-none transition-colors border ${
                   isTorrent && prepare?.complete
                     ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35 hover:bg-emerald-500/25'
                     : isTorrent
@@ -1286,21 +1334,21 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               >
                 {isTorrent && prepare?.complete ? (
                   <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>100% Downloaded</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-trim">100% Downloaded</span>
                   </>
                 ) : isTorrent && prepare ? (
                   <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-                    <span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse shrink-0" />
+                    <span className="text-trim">
                       {Math.min(99, Math.round((prepare.progress ?? 0) * 100))}% on disk
                       {prepare.downloadSpeed > 0 ? ` · ${formatRate(prepare.downloadSpeed)}` : ''}
                     </span>
                   </>
                 ) : (
                   <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
-                    <span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/80 shrink-0" />
+                    <span className="text-trim">
                       {mode === 'transcode' ? (reencoding ? 'Live Transcode' : 'Live Remux') : 'Direct Play'}
                       {bufferedEnd > currentTime ? ` · +${Math.round(bufferedEnd - currentTime)}s buffered` : ''}
                     </span>
@@ -1309,10 +1357,10 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               </button>
 
               {legendOpen && (
-                <div className="absolute bottom-11 left-0 w-72 rounded-2xl bg-zinc-950/95 border border-white/15 shadow-2xl p-3.5 text-xs text-zinc-200 space-y-3 backdrop-blur-md z-30">
+                <div className="absolute bottom-11 left-0 w-72 rounded-2xl bg-zinc-900/95 backdrop-blur-2xl ring-1 ring-white/15 shadow-2xl shadow-black/80 p-3.5 text-xs text-zinc-200 space-y-3 z-30">
                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <span className="font-semibold text-white">Timeline & Stream Status</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-zinc-300">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 text-zinc-300 text-[10px] leading-none text-trim">
                       {mode === 'transcode' ? (reencoding ? 'FFmpeg H.264' : 'FFmpeg Remux') : 'Direct Play'}
                     </span>
                   </div>
@@ -1390,46 +1438,67 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             {isTorrent && videoFiles.length > 1 && (
-              <select
-                value={fileIndex ?? ''}
-                onChange={(e) => {
+              <SelectDropdown
+                value={fileIndex !== undefined ? String(fileIndex) : ''}
+                onChange={(val) => {
+                  if (!val) return;
                   resumeAt.current = 0;
-                  setFileOverride(parseInt(e.target.value, 10));
+                  setFileOverride(parseInt(val, 10));
                   resetPipeline(true);
                 }}
-                aria-label="File"
-                className="max-w-[9rem] sm:max-w-xs bg-zinc-900/90 border border-zinc-700 text-xs text-zinc-200 rounded-lg px-2 py-1.5"
-              >
-                {fileIndex === undefined && <option value="">Auto (largest file)</option>}
-                {videoFiles.map((f) => (
-                  <option key={f.index} value={f.index}>
-                    {f.name.split('/').pop()}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  ...(fileIndex === undefined ? [{ value: '', label: 'Auto (largest file)' }] : []),
+                  ...videoFiles.map((f) => ({
+                    value: String(f.index),
+                    label: f.name.split('/').pop() || f.name,
+                  })),
+                ]}
+                ariaLabel="File"
+                placement="top"
+                align="right"
+                compact
+                className="max-w-[9rem] sm:max-w-[14rem]"
+                menuWidthClass="w-64 sm:w-80"
+                onOpenChange={(open) => {
+                  setFileMenuOpen(open);
+                  if (open) {
+                    setSubMenuOpen(false);
+                    setSourceMenuOpen(false);
+                    setAudioMenuOpen(false);
+                    setLegendOpen(false);
+                  }
+                }}
+              />
             )}
 
             {/* Playback speed (VOD) */}
             {!isLive && (
-              <select
-                value={playbackRate}
-                onChange={(e) => setPlaybackRate(parseFloat(e.target.value))}
-                aria-label="Playback speed"
-                title="Playback speed"
-                className="bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/70 text-xs font-medium text-zinc-200 rounded-lg px-2 py-1.5 cursor-pointer outline-none"
-              >
-                {PLAYBACK_RATES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}x
-                  </option>
-                ))}
-              </select>
+              <SelectDropdown
+                value={String(playbackRate)}
+                onChange={(val) => setPlaybackRate(parseFloat(val))}
+                options={PLAYBACK_RATES.map((r) => ({ value: String(r), label: `${r}x` }))}
+                ariaLabel="Playback speed"
+                placement="top"
+                align="right"
+                compact
+                menuWidthClass="w-28"
+                onOpenChange={(open) => {
+                  setSpeedMenuOpen(open);
+                  if (open) {
+                    setSubMenuOpen(false);
+                    setSourceMenuOpen(false);
+                    setAudioMenuOpen(false);
+                    setLegendOpen(false);
+                  }
+                }}
+              />
             )}
 
             {/* Audio track switcher (when multiple audio streams exist) */}
             {audioStreams.length > 1 && (
-              <div className="relative">
+              <div ref={audioMenuRef} className="relative">
                 <button
+                  type="button"
                   onClick={() => {
                     setAudioMenuOpen((o) => !o);
                     setSubMenuOpen(false);
@@ -1438,13 +1507,14 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   }}
                   title="Audio track"
                   aria-label="Audio track"
-                  className="p-2 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10"
+                  aria-expanded={audioMenuOpen}
+                  className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
                 >
                   <Languages className="w-5 h-5" />
                 </button>
                 {audioMenuOpen && (
-                  <div className="absolute bottom-12 right-0 w-56 max-h-72 overflow-y-auto rounded-xl bg-zinc-900/95 border border-zinc-700 shadow-2xl py-1 text-sm">
-                    <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
+                  <div className="absolute bottom-12 right-0 w-56 max-h-72 overflow-y-auto rounded-2xl bg-zinc-900/95 backdrop-blur-2xl ring-1 ring-white/15 shadow-2xl shadow-black/80 py-1.5 text-sm z-30">
+                    <div className="px-3.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-white/[0.08]">
                       Audio track
                     </div>
                     {audioStreams.map((a) => {
@@ -1453,8 +1523,11 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                       return (
                         <button
                           key={a.index}
+                          type="button"
                           onClick={() => chooseAudioTrack(a.index)}
-                          className="w-full flex items-center justify-between px-3 py-2 text-left text-zinc-200 hover:bg-white/10"
+                          className={`w-full flex items-center justify-between px-3.5 py-2 text-left transition-colors ${
+                            active ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-200 hover:bg-white/10'
+                          }`}
                         >
                           <span className="truncate pr-2">{label}</span>
                           {active && <Check className="w-4 h-4 shrink-0 text-rose-400" />}
@@ -1468,8 +1541,9 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
             {/* In-player Source / Channel Switcher */}
             {sources.length > 1 && (
-              <div className="relative">
+              <div ref={sourceMenuRef} className="relative">
                 <button
+                  type="button"
                   onClick={() => {
                     setSourceMenuOpen((o) => !o);
                     setSubMenuOpen(false);
@@ -1478,28 +1552,35 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   }}
                   title={isLive ? 'Switch channel (↑/↓)' : `Switch source (${sourceIndex + 1}/${sources.length})`}
                   aria-label={isLive ? 'Switch channel' : 'Switch source'}
-                  className="p-2 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 flex items-center gap-1"
+                  aria-expanded={sourceMenuOpen}
+                  className="h-9 px-2.5 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 inline-flex items-center justify-center gap-1.5 transition-colors shrink-0"
                 >
-                  <Layers className="w-5 h-5" />
-                  <span className="hidden sm:inline text-xs font-mono text-zinc-400">
+                  <Layers className="w-5 h-5 shrink-0" />
+                  <span className="hidden sm:inline text-xs font-mono leading-none text-zinc-400 text-trim">
                     {sourceIndex + 1}/{sources.length}
                   </span>
                 </button>
                 {sourceMenuOpen && (
-                  <div className="absolute bottom-12 right-0 w-72 max-h-72 overflow-y-auto rounded-xl bg-zinc-900/95 border border-zinc-700 shadow-2xl py-1 text-sm">
-                    <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
+                  <div className="absolute bottom-12 right-0 w-72 max-h-72 overflow-y-auto rounded-2xl bg-zinc-900/95 backdrop-blur-2xl ring-1 ring-white/15 shadow-2xl shadow-black/80 py-1.5 text-sm z-30">
+                    <div className="px-3.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-white/[0.08]">
                       {isLive ? 'Channels' : 'Sources'}
                     </div>
-                    {sources.map((s, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => selectSource(idx, !isLive)}
-                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-zinc-200 hover:bg-white/10"
-                      >
-                        <span className="truncate text-xs">{s.label || `Source ${idx + 1}`}</span>
-                        {idx === sourceIndex && <Check className="w-4 h-4 shrink-0 text-rose-400" />}
-                      </button>
-                    ))}
+                    {sources.map((s, idx) => {
+                      const active = idx === sourceIndex;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => selectSource(idx, !isLive)}
+                          className={`w-full flex items-center justify-between gap-2 px-3.5 py-2 text-left transition-colors ${
+                            active ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-200 hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="truncate text-xs">{s.label || `Source ${idx + 1}`}</span>
+                          {active && <Check className="w-4 h-4 shrink-0 text-rose-400" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1507,8 +1588,9 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
             {/* Subtitles + Subtitle Delay */}
             {showSubButton && (
-              <div className="relative">
+              <div ref={subMenuRef} className="relative">
                 <button
+                  type="button"
                   onClick={() => {
                     setSubMenuOpen((o) => !o);
                     setSourceMenuOpen(false);
@@ -1517,14 +1599,15 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   }}
                   title="Subtitles (C)"
                   aria-label="Subtitles"
-                  className={`p-2 rounded-lg ${activeSub ? 'text-white' : 'text-zinc-400'} hover:text-white hover:bg-white/10`}
+                  aria-expanded={subMenuOpen}
+                  className={`w-9 h-9 rounded-lg inline-flex items-center justify-center ${activeSub ? 'text-white' : 'text-zinc-400'} hover:text-white hover:bg-white/10 transition-colors shrink-0`}
                 >
                   <Captions className="w-5 h-5" />
                 </button>
                 {subMenuOpen && (
-                  <div className="absolute bottom-12 right-0 w-64 max-h-80 overflow-y-auto rounded-xl bg-zinc-900/95 border border-zinc-700 shadow-2xl py-1 text-sm">
+                  <div className="absolute bottom-12 right-0 w-64 max-h-80 overflow-y-auto rounded-2xl bg-zinc-900/95 backdrop-blur-2xl ring-1 ring-white/15 shadow-2xl shadow-black/80 py-1.5 text-sm z-30">
                     {activeSub && (
-                      <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between gap-2">
+                      <div className="px-3.5 py-2 border-b border-white/[0.08] flex items-center justify-between gap-2">
                         <span className="text-[11px] text-zinc-400">
                           Sync ({subtitleDelay > 0 ? `+${subtitleDelay.toFixed(1)}s` : `${subtitleDelay.toFixed(1)}s`})
                         </span>
@@ -1533,44 +1616,57 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                             type="button"
                             onClick={() => adjustSubtitleDelay(-0.5)}
                             title="Advance subtitles 0.5s (G)"
-                            className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
+                            className="h-6 px-2 rounded-md inline-flex items-center justify-center leading-none bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 transition-colors"
                           >
-                            −0.5s
+                            <span className="text-trim">−0.5s</span>
                           </button>
                           {subtitleDelay !== 0 && (
                             <button
                               type="button"
                               onClick={() => setSubtitleDelay(0)}
-                              className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-400 hover:text-white"
+                              className="h-6 px-2 rounded-md inline-flex items-center justify-center leading-none bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-400 hover:text-white transition-colors"
                             >
-                              0s
+                              <span className="text-trim">0s</span>
                             </button>
                           )}
                           <button
                             type="button"
                             onClick={() => adjustSubtitleDelay(0.5)}
                             title="Delay subtitles 0.5s (H)"
-                            className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
+                            className="h-6 px-2 rounded-md inline-flex items-center justify-center leading-none bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 transition-colors"
                           >
-                            +0.5s
+                            <span className="text-trim">+0.5s</span>
                           </button>
                         </div>
                       </div>
                     )}
-                    <button onClick={() => chooseSubtitle(null)} className="w-full flex items-center justify-between px-3 py-2 text-left text-zinc-200 hover:bg-white/10">
-                      Off {!activeSub && <Check className="w-4 h-4 text-rose-400" />}
+                    <button
+                      type="button"
+                      onClick={() => chooseSubtitle(null)}
+                      className={`w-full flex items-center justify-between px-3.5 py-2 text-left transition-colors ${
+                        !activeSub ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-200 hover:bg-white/10'
+                      }`}
+                    >
+                      <span>Off</span>
+                      {!activeSub && <Check className="w-4 h-4 shrink-0 text-rose-400" />}
                     </button>
-                    {subtitles.length === 0 && <p className="px-3 py-2 text-xs text-zinc-500">No subtitles found</p>}
-                    {subtitles.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => chooseSubtitle(s)}
-                        className="w-full flex items-center justify-between px-3 py-2 text-left text-zinc-200 hover:bg-white/10"
-                      >
-                        <span className="truncate pr-2">{s.label}</span>
-                        {activeSub?.id === s.id && <Check className="w-4 h-4 shrink-0 text-rose-400" />}
-                      </button>
-                    ))}
+                    {subtitles.length === 0 && <p className="px-3.5 py-2 text-xs text-zinc-500">No subtitles found</p>}
+                    {subtitles.map((s) => {
+                      const active = activeSub?.id === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => chooseSubtitle(s)}
+                          className={`w-full flex items-center justify-between px-3.5 py-2 text-left transition-colors ${
+                            active ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-200 hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="truncate pr-2">{s.label}</span>
+                          {active && <Check className="w-4 h-4 shrink-0 text-rose-400" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1579,20 +1675,22 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
             {/* Picture-in-Picture */}
             {pipSupported && (
               <button
+                type="button"
                 onClick={togglePip}
                 title="Picture-in-Picture (P)"
                 aria-label="Picture-in-Picture"
-                className={`p-2 rounded-lg ${isPip ? 'text-rose-400' : 'text-zinc-300'} hover:text-white hover:bg-white/10`}
+                className={`w-9 h-9 rounded-lg inline-flex items-center justify-center ${isPip ? 'text-rose-400' : 'text-zinc-300'} hover:text-white hover:bg-white/10 transition-colors shrink-0`}
               >
                 <PictureInPicture2 className="w-5 h-5" />
               </button>
             )}
 
             <button
+              type="button"
               onClick={toggleFullscreen}
               title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
               aria-label="Fullscreen"
-              className="p-2 text-zinc-300 hover:text-white"
+              className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
             >
               {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
             </button>

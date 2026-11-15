@@ -10,6 +10,7 @@ on:
       - 'site/**'
       - 'tools/**'
       - 'deploy/**'
+      - 'docs/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 

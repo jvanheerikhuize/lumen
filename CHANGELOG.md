@@ -5,6 +5,17 @@ All notable changes to **Lumen** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-11-15
+
+### Added
+- **Household Profile Manager & Nicknames (`REQ-0008`):** Manage household members right from the navigation bar (`ProfileManagerModal`), customize editable `nickname` labels (`nickname || name`), pick avatar color swatches, create or remove profiles, and toggle per-profile `Kids account` mode (`isKids`) synced via SQLite (`/api/state`).
+- **Balanced Kids Account (`?kids=1`):** Dedicated Kids experience filtering Home rows, Hero picks, Search (`Search Kids`), Taste Genres, Catalogs (`internal/server/kids.go`, `src/lib/kidsFilter.ts`), and **Kids Live TV** (`Kids` channel category across `All countries`).
+- **Viewport-Aware Custom Dropdowns (`SelectDropdown`):** Custom searchable/frosted selector replacing native `<select>` controls and automatically flipping upward or clamping horizontally inside viewports and `<dialog>` modals.
+
+### Changed
+- **UI Checkup & Top Menu Legibility:** Strengthened fixed-header gradient scrims, eliminated outer header backdrop-root conflicts so frosted popovers blur cleanly behind them, unified modal/player popup surfaces (`bg-zinc-950/[0.98]` / `bg-zinc-900/95 backdrop-blur-2xl`), centered pill/button icons & text metrics (with descender protection for `.truncate` labels), and eliminated mobile popover horizontal overflow.
+- **Direct Free-TV Station Directory (`REQ-0010`):** Stopped prepending hardcoded curated stations onto the front of Live TV rows (keeping curated channels strictly as offline fallback), cleared broken `redbull-tv` logo URLs, and classified Free-TV `Kids` broadcasters.
+
 ## [0.2.0] - 2026-11-14
 
 ### Changed

@@ -66,7 +66,7 @@ export interface StreamSource {
 export interface LiveChannel {
   id: string;
   name: string;
-  category: 'News' | 'Space & Science' | 'Sports' | 'Documentary' | 'Music & Culture' | 'Entertainment' | 'General';
+  category: 'News' | 'Space & Science' | 'Sports' | 'Documentary' | 'Music & Culture' | 'Entertainment' | 'Kids' | 'General';
   /** Display name, e.g. "Germany / International". */
   country: string;
   /** ISO 3166-1 alpha-2 code when known (used for the country filter). */

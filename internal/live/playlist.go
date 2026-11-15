@@ -93,8 +93,13 @@ func isHostAllowedForProxy(ctx context.Context, hostname string) bool {
 	hostAllowMu.Unlock()
 
 	all := GetAllChannels(ctx)
-	hosts := make(map[string]bool, len(all))
+	hosts := make(map[string]bool, len(all)+len(LiveChannels))
 	for _, c := range all {
+		if u, err := url.Parse(c.StreamURL); err == nil && u.Hostname() != "" {
+			hosts[strings.ToLower(u.Hostname())] = true
+		}
+	}
+	for _, c := range LiveChannels {
 		if u, err := url.Parse(c.StreamURL); err == nil && u.Hostname() != "" {
 			hosts[strings.ToLower(u.Hostname())] = true
 		}

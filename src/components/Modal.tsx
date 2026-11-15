@@ -82,7 +82,7 @@ export const Modal: React.FC<ModalProps> = ({ onClose, children, maxWidth = 'max
           type="button"
           onClick={() => dialogRef.current?.close()}
           aria-label="Close"
-          className="mt-3 mr-3 p-2.5 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-md text-zinc-100 hover:text-white ring-1 ring-white/15 shadow-lg transition-colors"
+          className="mt-3 mr-3 w-10 h-10 rounded-full inline-flex items-center justify-center bg-black/55 hover:bg-black/75 backdrop-blur-md text-zinc-100 hover:text-white ring-1 ring-white/15 shadow-lg transition-colors shrink-0"
         >
           <X className="w-5 h-5" />
         </button>
