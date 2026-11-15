@@ -78,6 +78,9 @@ type StatePatch struct {
 	ReplaceFavorites     bool                  `json:"replaceFavorites,omitempty"`
 }
 
+// MovieCompletionRatio is the playback threshold (97%) where a movie is treated as finished and removed from Continue Watching.
+const MovieCompletionRatio = 0.97
+
 func normalizeProfileID(profileID string) string {
 	if profileID == "" {
 		return "default"
@@ -154,7 +157,7 @@ func normalizeWatchProgressList(list []WatchProgressEntry) []WatchProgressEntry 
 
 // SaveWatchProgress records playback progress for a movie or episode into list:
 // - Ignores positions < 5s
-// - Removes movies reaching >= 94% completion
+// - Removes movies reaching >= 97% completion
 // - Stores per-episode progress map keyed by "${season}:${episode}" for series
 func SaveWatchProgress(
 	list []WatchProgressEntry,
@@ -185,7 +188,7 @@ func SaveWatchProgress(
 		}
 	}
 
-	if media.MediaType == "movie" && ratio >= 0.94 {
+	if media.MediaType == "movie" && ratio >= MovieCompletionRatio {
 		return RemoveWatchProgress(list, media.ID)
 	}
 
@@ -598,8 +601,8 @@ func (s *Store) UpdateState(ctx context.Context, patch StatePatch) (HouseholdSta
 			if mediaID == "" {
 				continue
 			}
-			// Auto-remove finished movies (>= 94% watched)
-			if item.Media.MediaType == "movie" && item.Duration > 0 && float64(item.Position)/float64(item.Duration) >= 0.94 {
+			// Auto-remove finished movies (>= 97% watched)
+			if item.Media.MediaType == "movie" && item.Duration > 0 && float64(item.Position)/float64(item.Duration) >= MovieCompletionRatio {
 				_, _ = tx.ExecContext(ctx, `DELETE FROM profile_watch_progress WHERE profile_id = ? AND media_id = ?`, profileID, mediaID)
 				continue
 			}

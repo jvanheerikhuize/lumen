@@ -4,6 +4,7 @@ import type { MediaItem } from '../src/types/index.ts';
 import {
   personalizeRows,
   pickRandomHero,
+  recordDiscoveryEvent,
   scoreMediaForUser,
   type TasteProfile,
 } from '../src/lib/tasteProfile.ts';
@@ -56,6 +57,42 @@ test('pickRandomHero avoids recently shown heroes and excludeId', () => {
   // With tt1 in recentHeroIds and tt2 excluded, only tt3 should be chosen.
   const picked = pickRandomHero(rows, profile, 'tt2');
   assert.equal(picked?.id, 'tt3');
+});
+
+test('pickRandomHero maintains 12-launch uniqueness across 30 simulated launches and recordDiscoveryEvent accumulates counters', () => {
+  const catalog = Array.from({ length: 24 }, (_, idx) =>
+    makeMedia(`tt${idx + 1}`, `Movie ${idx + 1}`, idx % 2 === 0 ? ['Sci-Fi'] : ['Drama'], 7.0 + (idx % 3))
+  );
+  const rows = [{ key: 'popular-movies', items: catalog }];
+  let recentHeroIds: string[] = [];
+  let prevId: string | undefined;
+  const chosenIds: string[] = [];
+
+  for (let launch = 0; launch < 30; launch++) {
+    const picked = pickRandomHero(rows, { ...emptyProfile, recentHeroIds }, prevId);
+    assert.ok(picked);
+    const pickedId = String(picked.id);
+    assert.notEqual(pickedId, prevId);
+    chosenIds.push(pickedId);
+    recentHeroIds = [pickedId, ...recentHeroIds.filter((id) => id !== pickedId)].slice(0, 12);
+    prevId = pickedId;
+  }
+
+  for (let start = 0; start <= chosenIds.length - 12; start++) {
+    assert.equal(new Set(chosenIds.slice(start, start + 12)).size, 12);
+  }
+
+  let tracked: TasteProfile = { ...emptyProfile };
+  tracked = recordDiscoveryEvent('launch', tracked);
+  tracked = recordDiscoveryEvent('hero', tracked);
+  tracked = recordDiscoveryEvent('picked_for_you', tracked);
+  tracked = recordDiscoveryEvent('search', tracked);
+  tracked = recordDiscoveryEvent('reroll', tracked);
+  assert.equal(tracked.discoveryMetrics?.launches, 1);
+  assert.equal(tracked.discoveryMetrics?.heroOpens, 1);
+  assert.equal(tracked.discoveryMetrics?.pickedForYouOpens, 1);
+  assert.equal(tracked.discoveryMetrics?.searchOpens, 1);
+  assert.equal(tracked.discoveryMetrics?.rerolls, 1);
 });
 
 test('personalizeRows creates Picked for You and Your Liked Titles rows and prioritizes favorite genres', () => {

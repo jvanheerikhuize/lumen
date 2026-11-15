@@ -5,6 +5,8 @@ const FAVORITE_CHANNELS_KEY = 'lumen_favorite_channels_v1';
 const ACTIVE_PROFILE_KEY = 'lumen_active_profile_v1';
 const HOUSEHOLD_PROFILES_KEY = 'lumen_household_profiles_v1';
 const MAX_PROGRESS_ITEMS = 40;
+/** Threshold (97%) at which completed movies clear automatically from Continue Watching. */
+export const MOVIE_COMPLETION_RATIO = 0.97;
 
 export interface HouseholdMember {
   id: string;
@@ -186,7 +188,7 @@ export function getEpisodeProgress(
 
 /**
  * Record playback progress for a movie or episode.
- * - For movies: if >= 94% complete, removes the movie from Continue Watching (finished).
+ * - For movies: if >= 97% complete, removes the movie from Continue Watching (finished).
  * - For series: keeps the series in Continue Watching with the latest season/episode and per-episode progress.
  */
 export function saveWatchProgress(
@@ -204,8 +206,8 @@ export function saveWatchProgress(
   const key = String(media.id);
   const existing = current.find((e) => String(e.media.id) === key);
 
-  // If a movie is finished (>= 94% watched), remove it from Continue Watching.
-  if (media.mediaType === 'movie' && ratio >= 0.94) {
+  // If a movie is finished (>= 97% watched), remove it from Continue Watching.
+  if (media.mediaType === 'movie' && ratio >= MOVIE_COMPLETION_RATIO) {
     return removeWatchProgress(media.id);
   }
 

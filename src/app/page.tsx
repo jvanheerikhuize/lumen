@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ShieldCheck, Shuffle, Sparkles } from 'lucide-react';
 import { Navbar, AppTab } from '@/components/Navbar';
 import { HeroBanner } from '@/components/HeroBanner';
@@ -17,11 +17,13 @@ import { MediaItem, StreamSource, LiveChannel } from '@/types';
 import { FEATURED_HERO, SAMPLE_MEDIA_CATALOG } from '@/lib/metadata/sampleCatalog';
 import { filterKidsSafeMedia, isKidsSafeMedia, KIDS_TASTE_GENRES } from '@/lib/kidsFilter';
 import {
+  DiscoveryOrigin,
   getTasteProfile,
   isMediaLiked,
   personalizeRows,
   pickRandomHero,
   POPULAR_TASTE_GENRES,
+  recordDiscoveryEvent,
   recordMediaInteraction,
   rememberHeroId,
   TasteProfile,
@@ -171,6 +173,7 @@ export default function Home() {
     recentHeroIds: [],
   });
   const [watchProgress, setWatchProgress] = useState<WatchProgressEntry[]>([]);
+  const launchTrackedRef = useRef(false);
 
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -281,8 +284,11 @@ export default function Home() {
           : base.rows;
         const currentTaste = getTasteProfile();
         const built = buildHomeState(sanitizedRows, currentTaste, base.featured, isKidsMode);
+        const finalTaste = launchTrackedRef.current
+          ? built.storedTaste
+          : ((launchTrackedRef.current = true), recordDiscoveryEvent('launch', built.storedTaste));
         setRawRows(sanitizedRows);
-        setTaste(built.storedTaste);
+        setTaste(finalTaste);
         const nextHome: HomeData = { featured: built.featured, rows: built.rows };
         setHome(nextHome);
         applyUrlParams(nextHome, isKidsMode);
@@ -452,9 +458,10 @@ export default function Home() {
   };
 
   const selectMedia = useCallback(
-    (media: MediaItem | null) => {
+    (media: MediaItem | null, origin?: DiscoveryOrigin) => {
       if (media) {
-        const nextProfile = recordMediaInteraction(media, 1);
+        let nextProfile = recordMediaInteraction(media, 1);
+        if (origin) nextProfile = recordDiscoveryEvent(origin, nextProfile);
         setTaste(nextProfile);
       }
       setSelectedMedia(media);
@@ -502,8 +509,8 @@ export default function Home() {
     [selectMedia]
   );
 
-  const handlePlayMedia = (media: MediaItem) => {
-    selectMedia(media);
+  const handlePlayMedia = (media: MediaItem, origin?: DiscoveryOrigin) => {
+    selectMedia(media, origin);
   };
 
   const handlePlayLiveChannel = (channel: LiveChannel, channelList?: LiveChannel[]) => {
@@ -595,7 +602,7 @@ export default function Home() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={switchTab}
-        onSelectMedia={selectMedia}
+        onSelectMedia={(m) => selectMedia(m, 'search')}
         onSelectLiveChannel={(ch) => handlePlayLiveChannel(ch)}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         profiles={profiles}
@@ -609,9 +616,12 @@ export default function Home() {
         <main className="flex-1 pb-24">
           <HeroBanner
             media={home?.featured ?? null}
-            onPlay={handlePlayMedia}
-            onMoreInfo={selectMedia}
-            onShuffle={() => shuffleHome()}
+            onPlay={(m) => handlePlayMedia(m, 'hero')}
+            onMoreInfo={(m) => selectMedia(m, 'hero')}
+            onShuffle={() => {
+              const rerolled = recordDiscoveryEvent('reroll');
+              shuffleHome(rerolled);
+            }}
             isLiked={home?.featured ? isMediaLiked(home.featured.id, taste) : false}
             onToggleLike={handleToggleLike}
           />
@@ -649,7 +659,10 @@ export default function Home() {
               })}
               <button
                 type="button"
-                onClick={() => shuffleHome()}
+                onClick={() => {
+                  const rerolled = recordDiscoveryEvent('reroll');
+                  shuffleHome(rerolled);
+                }}
                 className="ml-auto h-7 px-3.5 rounded-full inline-flex items-center justify-center gap-1.5 bg-white/[0.07] hover:bg-white/15 text-xs font-medium leading-none text-zinc-200 hover:text-white ring-1 ring-inset ring-white/10 transition-colors"
               >
                 <Shuffle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
@@ -662,24 +675,27 @@ export default function Home() {
                 title="Continue Watching"
                 subtitle="Pick up right where you left off"
                 items={continueWatchingItems}
-                onSelectMedia={selectMedia}
-                onPlayMedia={handlePlayMedia}
+                onSelectMedia={(m) => selectMedia(m, 'other')}
+                onPlayMedia={(m) => handlePlayMedia(m, 'other')}
                 onRemoveItem={(m) => setWatchProgress(removeWatchProgress(m.id))}
                 progressByMediaId={progressByMediaId}
               />
             )}
 
             {home
-              ? home.rows.map((row) => (
-                  <MediaCarousel
-                    key={row.key}
-                    title={row.title}
-                    subtitle={row.subtitle}
-                    items={row.items}
-                    onSelectMedia={selectMedia}
-                    onPlayMedia={handlePlayMedia}
-                  />
-                ))
+              ? home.rows.map((row) => {
+                  const rowOrigin: DiscoveryOrigin = row.key === 'for-you' ? 'picked_for_you' : 'other';
+                  return (
+                    <MediaCarousel
+                      key={row.key}
+                      title={row.title}
+                      subtitle={row.subtitle}
+                      items={row.items}
+                      onSelectMedia={(m) => selectMedia(m, rowOrigin)}
+                      onPlayMedia={(m) => handlePlayMedia(m, rowOrigin)}
+                    />
+                  );
+                })
               : Array.from({ length: 4 }).map((_, i) => <CarouselSkeleton key={i} />)}
           </div>
         </main>

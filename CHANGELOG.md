@@ -5,6 +5,16 @@ All notable changes to **Lumen** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Local Discovery Origin Telemetry (`TasteProfile.discoveryMetrics`, `REQ-0007`):** Privacy-local counters (`launches`, `heroOpens`, `pickedForYouOpens`, `otherOpens`, `searchOpens`, `rerolls`) recorded on launch, Hero, *Picked for You*, Search, and manual shuffle interactions to measure `ASM-0002` across real household sessions.
+- **Empirical Corpus Updates (`FCT-0012`, `FCT-0013`):** Invalidated `ASM-0003` (`94%`) based on a 14-film subtitle end-credits timing study (`81m–181m`), promoted `FCT-0012` (`>= 97%`), promoted `REQ-0008` to `active` (`SPC-0003` `67% ready`), and added `FCT-0013` verifying algorithmic 12-launch hero non-repetition and genre convergence across 6,000 live-catalog simulations.
+
+### Changed
+- **Movie Completion Threshold (`0.94` -> `0.97`):** Raised movie Continue Watching auto-removal threshold (`MOVIE_COMPLETION_RATIO` / `MovieCompletionRatio`) across frontend and Go SQLite sync so late ending scenes (`< 97%`) stay resumable while end credits clear cleanly.
+- **Hero Candidate Pool Alignment:** Aligned client `pickRandomHero` sampling slice (`12` -> `8`) with `internal/personalization/taste.go` and `REQ-0007`.
+
 ## [1.0.0] - 2026-11-15
 
 ### Added

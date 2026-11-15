@@ -7,7 +7,7 @@ import { Modal } from './Modal';
 import { SelectDropdown, SelectOption } from './SelectDropdown';
 import { rankSources } from '@/lib/streaming/pickSource';
 import { cleanAddonUrls, isDefaultAddonList } from '@/lib/scrapers/addonUrls';
-import { getEpisodeProgress, getMediaProgress } from '@/lib/watchProgress';
+import { getEpisodeProgress, getMediaProgress, MOVIE_COMPLETION_RATIO } from '@/lib/watchProgress';
 
 function formatAirDate(airstamp?: string): string {
   if (!airstamp) return '';
@@ -160,7 +160,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
   const resumeSeconds =
     activeEpProgress &&
     activeEpProgress.position > 10 &&
-    (!activeEpProgress.duration || activeEpProgress.position / activeEpProgress.duration < 0.94)
+    (!activeEpProgress.duration || activeEpProgress.position / activeEpProgress.duration < MOVIE_COMPLETION_RATIO)
       ? activeEpProgress.position
       : 0;
 

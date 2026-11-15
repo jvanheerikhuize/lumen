@@ -48,7 +48,7 @@ function makeMedia(id: string, title: string, mediaType: 'movie' | 'tv'): MediaI
   };
 }
 
-test('saveWatchProgress records movie progress and removes movie when >= 94% complete', () => {
+test('saveWatchProgress records movie progress, keeps 95%, and removes movie when >= 97% complete', () => {
   mockLocalStorage();
   const movie = makeMedia('tt100', 'Interstellar', 'movie');
 
@@ -56,7 +56,12 @@ test('saveWatchProgress records movie progress and removes movie when >= 94% com
   assert.equal(list1.length, 1);
   assert.equal(getMediaProgress('tt100')?.position, 1200);
 
-  // Finishing the movie (>= 94%) removes it from Continue Watching
+  // Late final scene (95%) must not clear prematurely
+  const listMid = saveWatchProgress(movie, 6840, 7200);
+  assert.equal(listMid.length, 1);
+  assert.equal(getMediaProgress('tt100')?.position, 6840);
+
+  // Finishing the movie (>= 97%) removes it from Continue Watching
   const list2 = saveWatchProgress(movie, 7000, 7200);
   assert.equal(list2.length, 0);
   assert.equal(getMediaProgress('tt100'), null);

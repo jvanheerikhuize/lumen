@@ -6,7 +6,7 @@ confidence: 0.75
 ---
 
 ## Statement
-Boosting genre affinity scores by `+1` on detail view, `+3` on playback start, `+5` on explicit title like (`-4` on unlike), and `+8` on pinned favorite genre (`-6` on unpin), combined with weighted random shuffling (`score + random * 8`) and excluding the last `12` shown hero IDs, produces relevant recommendations without cold-start friction.
+While weighted shuffling (`score + random * 8`) and the `12`-item `recentHeroIds` history mechanically prevent consecutive repeats and adapt recommendations to pinned genres (`FCT-0013`), real household viewers across `30` application launches still prefer starting playback from the Hero banner or `"Picked for You"` carousel rather than repeatedly re-rolling or falling back to manual search.
 
 ## How we validate it
-Observe household sessions over 30 application launches and measure whether users start playback from the hero banner or the "Picked for You" carousel without manually re-rolling or searching every time.
+Algorithmic non-repetition and genre convergence are verified in `FCT-0013`; subjective household engagement remains `open` until privacy-local `discoveryMetrics` counters (`launches`, `heroOpens`, `pickedForYouOpens`, `searchOpens`, `rerolls`) accumulate across `30` real household launches and confirm that discovery-driven playback exceeds manual re-rolls and search fallbacks.

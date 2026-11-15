@@ -13,6 +13,18 @@ function tasteStorageKey(): string {
   }
 }
 
+export type DiscoveryOrigin = 'launch' | 'hero' | 'picked_for_you' | 'other' | 'search' | 'reroll';
+
+export interface DiscoveryMetrics {
+  launches: number;
+  heroOpens: number;
+  pickedForYouOpens: number;
+  otherOpens: number;
+  searchOpens: number;
+  rerolls: number;
+  updatedAt: number;
+}
+
 export interface TasteProfile {
   /** Cumulative affinity score per genre name (e.g. { "Sci-Fi": 12, "Action": 8 }). */
   genreScores: Record<string, number>;
@@ -22,7 +34,19 @@ export interface TasteProfile {
   likedItems: MediaItem[];
   /** Recently shown Hero IDs so opening the app never shows the same movie twice in a row. */
   recentHeroIds: string[];
+  /** Privacy-local counters for validating launch discovery vs manual search/re-roll behavior. */
+  discoveryMetrics?: DiscoveryMetrics;
 }
+
+const DEFAULT_DISCOVERY_METRICS: DiscoveryMetrics = {
+  launches: 0,
+  heroOpens: 0,
+  pickedForYouOpens: 0,
+  otherOpens: 0,
+  searchOpens: 0,
+  rerolls: 0,
+  updatedAt: 0,
+};
 
 const DEFAULT_PROFILE: TasteProfile = {
   genreScores: {},
@@ -47,17 +71,34 @@ export const POPULAR_TASTE_GENRES = [
   'Romance',
 ] as const;
 
+function normalizeDiscoveryMetrics(raw: unknown): DiscoveryMetrics | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const num = (k: string) => (typeof r[k] === 'number' && Number.isFinite(r[k] as number) ? Math.max(0, Math.floor(r[k] as number)) : 0);
+  return {
+    launches: num('launches'),
+    heroOpens: num('heroOpens'),
+    pickedForYouOpens: num('pickedForYouOpens'),
+    otherOpens: num('otherOpens'),
+    searchOpens: num('searchOpens'),
+    rerolls: num('rerolls'),
+    updatedAt: num('updatedAt'),
+  };
+}
+
 export function getTasteProfile(): TasteProfile {
   if (typeof window === 'undefined') return DEFAULT_PROFILE;
   try {
     const raw = localStorage.getItem(tasteStorageKey());
     if (!raw) return DEFAULT_PROFILE;
     const parsed = JSON.parse(raw);
+    const discoveryMetrics = normalizeDiscoveryMetrics(parsed?.discoveryMetrics);
     return {
       genreScores: parsed?.genreScores && typeof parsed.genreScores === 'object' ? parsed.genreScores : {},
       favoriteGenres: Array.isArray(parsed?.favoriteGenres) ? parsed.favoriteGenres : [],
       likedItems: Array.isArray(parsed?.likedItems) ? parsed.likedItems : [],
       recentHeroIds: Array.isArray(parsed?.recentHeroIds) ? parsed.recentHeroIds : [],
+      ...(discoveryMetrics ? { discoveryMetrics } : {}),
     };
   } catch {
     return DEFAULT_PROFILE;
@@ -73,6 +114,26 @@ function saveTasteProfile(profile: TasteProfile): TasteProfile {
     }
   }
   return profile;
+}
+
+/** Increment a local discovery counter so multi-launch session behavior can be evaluated without external telemetry. */
+export function recordDiscoveryEvent(origin: DiscoveryOrigin, profile = getTasteProfile()): TasteProfile {
+  const prev = profile.discoveryMetrics ?? DEFAULT_DISCOVERY_METRICS;
+  const fieldMap: Record<DiscoveryOrigin, keyof Omit<DiscoveryMetrics, 'updatedAt'>> = {
+    launch: 'launches',
+    hero: 'heroOpens',
+    picked_for_you: 'pickedForYouOpens',
+    other: 'otherOpens',
+    search: 'searchOpens',
+    reroll: 'rerolls',
+  };
+  const key = fieldMap[origin];
+  const nextMetrics: DiscoveryMetrics = {
+    ...prev,
+    [key]: prev[key] + 1,
+    updatedAt: Date.now(),
+  };
+  return saveTasteProfile({ ...profile, discoveryMetrics: nextMetrics });
 }
 
 /** Boost affinity for a title's genres when the user views (+1), plays (+3), or likes (+5) it. */
@@ -198,9 +259,9 @@ export function pickRandomHero(
     if (favMatches.length >= 3) pool = favMatches;
   }
 
-  // Score and take the top 15 candidates, then pick one at random weighted by score.
+  // Score and take the top 8 candidates, then pick one at random.
   const ranked = weightedShuffle(pool, (item) => scoreMediaForUser(item, profile));
-  const topSlice = ranked.slice(0, Math.min(12, ranked.length));
+  const topSlice = ranked.slice(0, Math.min(8, ranked.length));
   const chosen = topSlice[Math.floor(Math.random() * topSlice.length)] || ranked[0];
   return chosen;
 }

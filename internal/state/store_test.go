@@ -34,7 +34,13 @@ func TestSaveWatchProgressMovieCompletionAndSeriesMemory(t *testing.T) {
 		t.Fatalf("expected position 1200, got %+v", got)
 	}
 
-	// Finishing the movie (>= 94%) removes it from Continue Watching
+	// Late ending dialogue (~95% of 7200s) remains in Continue Watching
+	list = SaveWatchProgress(list, movie, 6840, 7200, nil, nil)
+	if len(list) != 1 || GetMediaProgress("tt100", list) == nil || GetMediaProgress("tt100", list).Position != 6840 {
+		t.Fatalf("expected 95%% position 6840 to remain in Continue Watching, got %+v", list)
+	}
+
+	// Finishing the movie (>= 97%) removes it from Continue Watching
 	list = SaveWatchProgress(list, movie, 7000, 7200, nil, nil)
 	if len(list) != 0 || GetMediaProgress("tt100", list) != nil {
 		t.Fatalf("expected finished movie to be removed, got %+v", list)

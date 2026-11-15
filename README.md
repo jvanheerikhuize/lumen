@@ -208,7 +208,7 @@ curl -sf http://localhost:3000/api/live | jq '.channels[:3] | .[] | {name, categ
 
 ## Domain Specifications (`ASDLC Meta-Specs`) & Technology Stack
 
-Lumen's domain knowledge is extracted into **34 atomic, 100% tech-stack-free epistemic records** in [`records/`](records/) following [ASDLC Meta-Specs](https://github.com/jvanheerikhuize/asdlc-meta-specs) (`Facts → Requirements → Specs`, with `Assumptions` and `Questions` explicitly tracked and promoted as empirical evidence is gathered). Concrete implementation and technology stack choices live separately in [`TECH_STACK.md`](TECH_STACK.md).
+Lumen's domain knowledge is extracted into **36 atomic, 100% tech-stack-free epistemic records** in [`records/`](records/) following [ASDLC Meta-Specs](https://github.com/jvanheerikhuize/asdlc-meta-specs) (`Facts → Requirements → Specs`, with `Assumptions` and `Questions` explicitly tracked and promoted as empirical evidence is gathered). Concrete implementation and technology stack choices live separately in [`TECH_STACK.md`](TECH_STACK.md).
 
 Explore the interactive **Dashboard, Tasks, Record Graph, and Capture Workspace** on GitHub Pages: **[https://jvanheerikhuize.github.io/lumen/](https://jvanheerikhuize.github.io/lumen/)**
 
@@ -216,7 +216,7 @@ Explore the interactive **Dashboard, Tasks, Record Graph, and Capture Workspace*
 | :--- | :--- | :--- | :--- |
 | [`SPC-0001`](records/SPC-0001-core-catalog-and-adaptive-playback-skeleton.md) | `skeleton` | **100%** | Keyless catalogs (`REQ-0001`), stream ranking (`REQ-0002`), P2P head/tail piece priority & downloaded range telemetry (`REQ-0003`), 3-tier adaptive playback (`REQ-0004`), stall failover & 4-layer timeline (`REQ-0005`) |
 | [`SPC-0002`](records/SPC-0002-embedded-and-external-subtitle-pipeline.md) | `feature` | **100%** | Embedded & external subtitle pipeline with WebVTT normalization and `±0.5s` sync (`REQ-0006`) |
-| [`SPC-0003`](records/SPC-0003-taste-personalization-and-household-progress.md) | `feature` | **33%** | Randomized hero & genre taste learning (`REQ-0007`), per-member household profiles & atomic LAN state sync (`REQ-0008`), live broadcast schedules (`REQ-0009`) |
+| [`SPC-0003`](records/SPC-0003-taste-personalization-and-household-progress.md) | `feature` | **67%** | Randomized hero & genre taste learning (`REQ-0007`), per-member household profiles & atomic LAN state sync (`REQ-0008`), live broadcast schedules (`REQ-0009`) |
 | [`SPC-0004`](records/SPC-0004-free-to-air-live-television-and-hls-relay.md) | `feature` | **100%** | ~1,700 Free-TV/IPTV channels (with curated fallback when unreachable), strict per-country ISO filtering, Kids channel filtering, batch on-air probing, and HLS CORS manifest relay (`REQ-0010`) |
 | [`SPC-0005`](records/SPC-0005-network-boundary-protection-and-indexers.md) | `feature` | **100%** | Outbound SSRF & socket-level DNS-rebinding protection (`REQ-0011`) and custom addons + Prowlarr/Jackett indexers (`REQ-0012`) |
 
