@@ -3,7 +3,7 @@
 
     python tools/spec.py check [--strict]          validate links, epistemic gates, open questions, spec DAG
     python tools/spec.py impact <ID>               what must be revisited when <ID> changes
-    python tools/spec.py render [--tier T] [--format markdown|gherkin] [--out DIR]
+    python tools/spec.py render [--tier T] [--format markdown|gherkin] [--stack FILE] [--out DIR]
     python tools/spec.py index [--out FILE]        write the JSON the Pages site reads
 """
 from __future__ import annotations
@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -114,6 +115,14 @@ def check(records: dict[str, Record]) -> tuple[list[str], list[str]]:
             source = r.meta.get("promoted_from")
             if source in records and records[source].status != "validated":
                 err(r, f"promoted from {source}, which is not validated")
+            review = r.meta.get("review_after")
+            if review:
+                try:
+                    review_date = date.fromisoformat(str(review))
+                    if date.today() > review_date:
+                        warn(r, f"fact is past review date {review_date.isoformat()} and may be stale")
+                except ValueError:
+                    err(r, f"invalid review_after date format {review!r} (expected YYYY-MM-DD)")
 
         # 3. Open questions: a gap we know about, with no candidate answer yet
         if r.prefix == "QST":
@@ -242,12 +251,15 @@ def impact(changed: str, records: dict[str, Record]) -> tuple[list[str], list[Re
     return sorted(seen - {s.id for s in hit_specs}), hit_specs
 
 
-def render_markdown(spec: Record, records: dict[str, Record]) -> str:
+def render_markdown(spec: Record, records: dict[str, Record], stack: str = "") -> str:
     out = [f"# {spec.id} · {spec.title}", "",
            f"Tier: **{spec.meta['tier']}** · Readiness: **{readiness(spec, records)}%**", ""]
     if spec.meta.get("depends_on"):
         out += ["Builds on: " + ", ".join(spec.meta["depends_on"]), ""]
     out += [spec.section("Purpose"), ""]
+    non_goals = spec.section("Non-goals")
+    if non_goals:
+        out += ["## Non-goals", "", non_goals, ""]
     out += _asked(spec, records, "##")
     out += ["## Requirements", ""]
     for rid in spec.meta.get("requirements") or []:
@@ -257,6 +269,8 @@ def render_markdown(spec: Record, records: dict[str, Record]) -> str:
             out += ["```gherkin", *sc, "```", ""]
         out += ["Because:"] + [f"- {g} ({records[g].status}): {records[g].title}" for g in req.meta["because"]] + [""]
         out += _asked(req, records, "####")
+    if stack.strip():
+        out += ["## Technology Stack", "", stack.strip(), ""]
     return "\n".join(out).rstrip() + "\n"
 
 
@@ -268,7 +282,7 @@ def _asked(r: Record, records: dict[str, Record], level: str) -> list[str]:
             + [f"- {q}: {records[q].title}" for q in qs] + [""])
 
 
-def render_gherkin(spec: Record, records: dict[str, Record]) -> str:
+def render_gherkin(spec: Record, records: dict[str, Record], stack: str = "") -> str:
     out = [f"Feature: {spec.title}", ""]
     for rid in spec.meta.get("requirements") or []:
         req = records[rid]
@@ -336,6 +350,7 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("render")
     r.add_argument("--tier", choices=["skeleton", "feature"])
     r.add_argument("--format", choices=sorted(RENDERERS), default="markdown")
+    r.add_argument("--stack", help="optional technology stack file to bind at render time")
     r.add_argument("--out", default="dist")
     x = sub.add_parser("index")
     x.add_argument("--out", default="site/data/index.json")
@@ -370,13 +385,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {args.out}")
         return 0
 
+    stack_text = ""
+    if args.stack:
+        sp = Path(args.stack)
+        if not sp.is_file():
+            sp = ROOT / args.stack
+        if not sp.is_file():
+            print(f"unknown stack file {args.stack}")
+            return 1
+        stack_text = sp.read_text(encoding="utf-8").strip()
+
     render, ext = RENDERERS[args.format]
     out = ROOT / args.out
     out.mkdir(parents=True, exist_ok=True)
     for s in topo([r for r in records.values() if r.prefix == "SPC"], records):
         if args.tier and s.meta.get("tier") != args.tier:
             continue
-        (out / f"{s.id}{ext}").write_text(render(s, records), encoding="utf-8")
+        content = render(s, records, stack_text) if stack_text else render(s, records)
+        (out / f"{s.id}{ext}").write_text(content, encoding="utf-8")
         print(f"wrote {args.out}/{s.id}{ext}")
     return 0
 
