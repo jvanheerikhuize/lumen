@@ -2,6 +2,8 @@
 
 This document lives **outside** the epistemic specification corpus (`records/`) so that all assumptions (`ASM`), facts (`FCT`), questions (`QST`), requirements (`REQ`), and specifications (`SPC`) remain 100% technology-stack-neutral (`python3 tools/spec.py check --strict`).
 
+Design-System: asdlc-meta-designsystem@latest
+
 ---
 
 ## Current Production Appliance Stack
@@ -13,6 +15,7 @@ Lumen compiles and ships as a single self-contained binary with the frontend bun
 | **Backend & HTTP Appliance** | **Go 1.24+** (`net/http`, `cmd/lumen`, `internal/server`) | Single-binary HTTP server, API router, static SPA asset server (`io/fs`), and SSRF-guarded outbound proxy. |
 | **Frontend SPA** | **Vite 8** + **React 19** + **TypeScript 5** (`src/`) | Client-side single-page application compiled to `web/dist` and embedded into the Go binary via `web/embed.go`. |
 | **Styling & Icons** | **Tailwind CSS 4** + **Lucide React** | Dark-mode glassmorphic UI, viewport-aware custom dropdowns, 4-layer playback timeline scrubber, and responsive layout. |
+| **Specification Workspace UI** | **ASDLC Meta-DesignSystem** (`asdlc-meta-designsystem@latest`) | Zero-build Web Component Atoms, Molecules, Organisms, and Templates powering `site/`. |
 | **BitTorrent Streaming Engine** | **`github.com/anacrolix/torrent`** (`internal/streaming`) | Real-time torrent swarm ingestion, custom piece prioritization (head/tail + dynamic readhead window), contiguous downloaded-range calculation, and 20-minute idle eviction. |
 | **Media Remuxing & Transcoding** | **`ffmpeg` / `ffprobe`** (`internal/streaming`) | Runtime codec probing (`h264`, `hevc`, `aac`, `ac3`, `eac3`), zero-CPU fragmented MP4 (`fMP4`) copy-remuxing, and on-the-fly audio/video transcoding with `-ss` seek support. |
 | **Live TV HLS Playback** | **`hls.js` 1.7** + Native `<video>` (`src/components/VideoPlayerModal.tsx`, `internal/live`) | Adaptive HLS live stream playback paired with `/api/live/proxy` manifest rewriting and CORS relay. |

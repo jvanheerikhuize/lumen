@@ -1,4 +1,4 @@
-// Meta-Specs Lite workspace: one module, no build step.
+// ASDLC Meta-Specs workspace: one module, no build step.
 // Reads data/index.json (written by `python tools/spec.py index`) and renders five views.
 
 const PREFIXES = ["ASM", "FCT", "QST", "REQ", "SPC"];
@@ -20,7 +20,12 @@ function h(tag, attrs = {}, ...kids) {
 }
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const prefix = (id) => id.slice(0, 3);
-const badge = (status) => h("span", { class: `badge s-${status}` }, status);
+const BADGE_VARIANT = {
+  active: "success", validated: "success", answered: "success",
+  open: "warning", provisional: "warning", draft: "warning", stale: "warning", ready: "info", asked: "warning",
+  broken: "accent", invalidated: "neutral", deprecated: "neutral",
+};
+const badge = (status) => h("ui-badge", { variant: BADGE_VARIANT[status] || "neutral" }, status);
 const rid = (id) => h("a", { class: `rid t-${prefix(id)}`, href: `#/record/${id}` }, id);
 const ofType = (p) => data.records.filter((r) => prefix(r.id) === p);
 const gh = (path) => (data.repo ? `https://github.com/${data.repo}/${path}` : "#");
@@ -70,21 +75,25 @@ function markdown(src) {
 // ---------- state ----------
 // Every status maps to one tone: done (green), wait (amber, needs a human), bad (red), off (grey, retired).
 const TONES = {
-  FCT: { active: ["done", "known"], deprecated: ["off", "retired"] },
-  ASM: { validated: ["done", "proven"], open: ["wait", "need testing"], invalidated: ["off", "refuted"] },
+  FCT: { active: ["done", "recorded"], stale: ["wait", "past review date"], deprecated: ["off", "retired"] },
+  ASM: { validated: ["done", "validated"], open: ["wait", "need testing"], invalidated: ["off", "refuted"] },
   QST: { answered: ["done", "answered"], open: ["wait", "need an answer"] },
   REQ: { active: ["done", "active"], ready: ["wait", "ready to activate"], asked: ["wait", "waiting on a question"], provisional: ["wait", "waiting on assumptions"], broken: ["bad", "broken"] },
-  SPC: { active: ["done", "ready"], draft: ["wait", "in progress"] },
+  SPC: { active: ["done", "active"], draft: ["wait", "in progress"] },
 };
+const isStale = (r) => prefix(r.id) === "FCT" && r.status === "active" && r.review_after && new Date().toISOString().slice(0, 10) > String(r.review_after);
 /** The status a record really has: a requirement resting on something refuted is broken, one with an open question is waiting on it, and one resting only on facts is ready, whatever its file says. */
 function effective(r) {
+  if (isStale(r)) return "stale";
   if (prefix(r.id) !== "REQ" || r.status === "active") return r.status;
   const grounds = (r.because || []).map((g) => byId[g]).filter(Boolean);
   if (grounds.some((g) => tone(g) === "off")) return "broken";
   if (r.open_questions?.length) return "asked";
   return grounds.length && grounds.every((g) => prefix(g.id) === "FCT") ? "ready" : r.status;
 }
-function tone(r) { return (TONES[prefix(r.id)][r.status] || ["off", r.status])[0]; }
+function tone(r) {
+  return (TONES[prefix(r.id)][effective(r)] || TONES[prefix(r.id)][r.status] || ["off", r.status])[0];
+}
 const section = (body, heading) => (body.match(new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m")) || [, ""])[1].trim();
 const editLink = (r, label = "Edit on GitHub") => h("a", { class: "btn ghost", href: gh(`edit/main/${r.path}`), target: "_blank", rel: "noopener" }, label);
 const idList = (ids) => ids.flatMap((d, i) => [i ? ", " : "", rid(d)]);
@@ -106,6 +115,10 @@ function blocker(req) {
 function tasks() {
   const out = [];
   const add = (level, r, title, why, actions, unlocks = []) => out.push({ level, r, title, why, actions, unlocks });
+  for (const issue of data.issues || []) {
+    const [lvl, msg] = issue.split(": ", 2);
+    add(lvl === "error" ? "fix" : "tidy", { id: "GRAPH", title: "Global graph validation" }, ["Fix graph validation error"], [msg || issue], []);
+  }
   for (const r of ofType("REQ")) {
     if (r.status !== "active") {
       const [kind, why] = blocker(r);
@@ -126,7 +139,7 @@ function tasks() {
       [h("a", { class: "btn", href: `#/capture/fact?promote=${a.id}` }, "It held → record the fact"),
        editLink(a, "It failed → set status: invalidated")], a.downstream);
   }
-  for (const sp of ofType("SPC").filter((s) => s.status !== "active" && s.readiness === 100 && !s.open_questions.length))
+  for (const sp of ofType("SPC").filter((s) => s.status !== "active" && (s.requirements || []).length && (s.requirements || []).every((q) => byId[q]?.status === "active") && !s.open_questions.length))
     add("quick", sp, ["Activate ", rid(sp.id)], ["Every requirement in it is active. Set ", h("code", {}, "status: active"), "."], [editLink(sp)]);
   for (const r of data.records) for (const issue of r.issues) {
     const [lvl, msg] = issue.split(": ", 2);
@@ -157,20 +170,29 @@ function dashboard() {
 
   main.append(
     h("h1", {}, "Dashboard"),
-    todo.length
-      ? h("a", { class: `callout ${per("fix") ? "bad" : "wait"}`, href: "#/tasks" },
-          h("b", {}, `${todo.length} task${todo.length > 1 ? "s" : ""} need you`),
-          h("span", {}, Object.keys(LEVELS).filter(per).map((l) => `${per(l)} ${LEVELS[l][0].toLowerCase()}`).join(" · ")),
-          h("span", { class: "go" }, "Open tasks →"))
-      : h("div", { class: "callout done" }, h("b", {}, "Nothing needs you"), h("span", {}, "Every requirement rests on facts and every spec is ready.")),
+    data.generated_at ? h("p", { class: "muted" }, `Index generated ${data.generated_at}${data.revision ? ` (${data.revision})` : ""}`) : "",
+    h("div", { class: "tiles" },
+      h("ui-stat-tile", { value: String(data.records.length), label: "Total Records", status: "info" }),
+      h("ui-stat-tile", { value: String(ofType("FCT").filter((r) => r.status === "active").length), label: "Active Facts", status: "done", variant: "success" }),
+      h("ui-stat-tile", { value: String(open.length), label: "Open QST / ASM", status: open.length ? "wait" : "done", variant: open.length ? "warning" : "success" }),
+      h("ui-stat-tile", { value: String(fine.length), label: "Specs Active", status: "done", variant: "accent" })),
+    todo.length || data.summary?.errors
+      ? h("a", { href: "#/tasks", style: "text-decoration:none;display:block;margin:16px 0 8px" },
+          h("ui-callout", {
+            variant: per("fix") || data.summary?.errors ? "danger" : "warning",
+            title: `${todo.length || data.summary.errors} task${(todo.length || data.summary.errors) > 1 ? "s" : ""} need you`,
+          }, Object.keys(LEVELS).filter(per).map((l) => `${per(l)} ${LEVELS[l][0].toLowerCase()}`).join(" · ") || `${data.summary.errors} validation error(s)`,
+             " · ", h("strong", {}, "Open tasks →")))
+      : h("ui-callout", { variant: "success", title: "Nothing needs you", style: "margin:16px 0 8px" },
+          "Every requirement rests on recorded facts and all declared grounds are consistent."),
 
     h("h2", {}, "State of the spec"),
-    h("div", { class: "legend" }, ...[["done", "done"], ["wait", "needs attention"], ["bad", "broken"], ["off", "retired"]].map(([t, l]) => h("span", {}, h("span", { class: `dot ${t}` }), l))),
+    h("div", { class: "legend" }, ...[["done", "done"], ["wait", "needs attention"], ["bad", "broken"], ["off", "retired"]].map(([t, l]) => h("span", {}, h("ui-dot", { status: t }), l))),
     h("div", { class: "states" }, PREFIXES.map(stateRow)),
 
     h("h2", {}, "Specs requiring attention"),
-    attention.length ? h("div", { class: "cards" }, attention.map(specCard)) : h("p", { class: "muted" }, "None. All specs are ready."),
-    fine.length ? h("p", { class: "muted" }, "Ready: ", idList(fine), " ✓") : "",
+    attention.length ? h("div", { class: "cards" }, attention.map(specCard)) : h("p", { class: "muted" }, "None. All specs are locally active."),
+    fine.length ? h("p", { class: "muted" }, "Locally active: ", idList(fine), " ✓") : "",
 
     h("h2", {}, "What's holding things back"),
     open.length
@@ -188,16 +210,16 @@ function stateRow(p) {
   return h("div", { class: "state" },
     h("a", { class: "state-name", href: `#/records?type=${p}` }, LABELS[p], h("span", { class: "muted" }, ` ${rs.length}`)),
     h("div", { class: "seg" }, groups.map((g) => h("a", { class: `seg-${g.t}`, href: link(g), style: `flex:${g.n}`, title: `${g.n} ${g.label}` }))),
-    h("div", { class: "seg-legend" }, groups.map((g) => h("a", { href: link(g) }, h("span", { class: `dot ${g.t}` }), `${g.n} ${g.label}`))));
+    h("div", { class: "seg-legend" }, groups.map((g) => h("a", { href: link(g) }, h("ui-dot", { status: g.t }), `${g.n} ${g.label}`))));
 }
 
 function specCard(sp) {
   const reqs = (sp.requirements || []).map((id) => byId[id]).filter(Boolean);
   const pending = reqs.filter((r) => r.status !== "active");
   return h("div", { class: "card" },
-    h("div", {}, rid(sp.id), " ", badge(sp.status), " ", h("span", { class: "badge" }, sp.tier)),
+    h("div", { style: "display:flex;align-items:center;gap:6px;flex-wrap:wrap" }, rid(sp.id), badge(sp.status), h("ui-badge", { variant: "info" }, sp.tier)),
     h("h3", {}, h("a", { href: `#/record/${sp.id}` }, sp.title)),
-    h("div", { class: "bar", title: `${sp.readiness}% of requirements active` }, h("i", { style: `width:${sp.readiness}%` })),
+    h("ui-progress", { value: String(sp.readiness), variant: sp.readiness === 100 ? "success" : "warning", "aria-label": `${sp.readiness}% of requirements active` }),
     h("div", { class: "muted" }, `${reqs.length - pending.length} of ${reqs.length} requirements active`),
     h("ul", { class: "blockers" },
       sp.issues.map((i) => h("li", { class: "bad" }, i)),
@@ -210,7 +232,7 @@ function tasksView() {
   const todo = tasks();
   main.append(h("h1", {}, "Tasks"),
     h("p", { class: "muted" }, "What a human needs to do to move the spec forward, worked out from the records. Each action opens GitHub; CI checks the change."));
-  if (!todo.length) return main.append(h("div", { class: "callout done" }, h("b", {}, "Nothing to do"), h("span", {}, "Every requirement rests on facts and every spec is ready.")));
+  if (!todo.length) return main.append(h("ui-callout", { variant: "success", title: "Nothing to do" }, "Every requirement rests on facts and every spec is ready."));
   for (const [lvl, [title, intro]] of Object.entries(LEVELS)) {
     const group = todo.filter((t) => t.level === lvl);
     if (!group.length) continue;
@@ -227,21 +249,28 @@ function records(params) {
   const type = params.get("type") || "";
   const status = params.get("status") || "";
   const list = h("ul", { class: "list" });
-  const search = h("input", { type: "search", placeholder: "Search id, title or text…", "aria-label": "Search records" });
+  const search = h("ui-input", { type: "search", placeholder: "Search id, title or text…", "aria-label": "Search records" });
   const fill = () => {
-    const q = search.value.toLowerCase();
+    const q = (search.value || "").toLowerCase();
     const rows = data.records.filter((r) => (!type || prefix(r.id) === type) && (!status || effective(r) === status) &&
       (!q || `${r.id} ${r.title} ${r.body}`.toLowerCase().includes(q)));
     list.replaceChildren(...(rows.length ? rows.map((r) => h("li", {}, rid(r.id),
       h("a", { class: "grow", href: `#/record/${r.id}`, style: "color:inherit" }, r.title), badge(r.status)))
       : [h("li", { class: "muted" }, "No records match.")]));
   };
-  search.addEventListener("input", fill);
+  search.addEventListener("ui-input", fill);
   main.append(h("h1", {}, "Records"),
     h("div", { class: "toolbar" },
-      ["", ...PREFIXES].map((p) => h("a", { class: "chip", href: p ? `#/records?type=${p}` : "#/records", "aria-pressed": String(p === type) },
-        p ? `${LABELS[p]} (${ofType(p).length})` : `All (${data.records.length})`)),
-      status ? h("a", { class: "chip filter", href: type ? `#/records?type=${type}` : "#/records", title: "Clear status filter" }, `status: ${status} ×`) : "",
+      ["", ...PREFIXES].map((p) => h("ui-chip", {
+        pressed: p === type,
+        onclick: () => { location.hash = p ? `#/records?type=${p}` : "#/records"; },
+      }, p ? `${LABELS[p]} (${ofType(p).length})` : `All (${data.records.length})`)),
+      status ? h("ui-chip", {
+        variant: "accent",
+        pressed: true,
+        title: "Clear status filter",
+        onclick: () => { location.hash = type ? `#/records?type=${type}` : "#/records"; },
+      }, `status: ${status} ×`) : "",
       search),
     list);
   fill();
@@ -254,17 +283,18 @@ function record(id) {
   const field = (label, value) => value == null || value === "" ? null : [h("dt", {}, label), h("dd", {}, value)];
   main.append(
     h("p", {}, h("a", { href: `#/records?type=${prefix(id)}` }, `← ${LABELS[prefix(id)]}`)),
-    h("div", {}, rid(id), " ", badge(r.status)),
+    h("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px" }, rid(id), badge(r.status)),
     h("h1", {}, r.title),
-    r.issues.length ? h("div", { class: "issues" }, r.issues.map((i) => h("div", {}, i))) : "",
-    h("div", { class: "record-grid" },
+    r.issues.length ? h("ui-callout", { variant: "danger", title: "Validation Issues", style: "margin:12px 0" }, r.issues.map((i) => h("div", {}, i))) : "",
+    h("detail-layout", { style: "margin-top:16px" },
       h("article", { class: "prose", html: markdown(r.body) }),
-      h("aside", {},
+      h("div", { slot: "aside" },
         h("dl", { class: "meta" },
           field("Confidence", r.confidence),
           field("Evidence", r.evidence),
+          field("Review after", r.review_after),
           field("Tier", r.tier),
-          field("Readiness", r.readiness != null ? `${r.readiness}%` : null),
+          field("Local eligibility", r.readiness != null ? `${(r.requirements || []).filter((reqId) => byId[reqId]?.status === "active").length}/${(r.requirements || []).length} direct requirements active (${r.readiness}%)` : null),
           field("Promoted from", r.promoted_from && rid(r.promoted_from)),
           field("Promoted to", r.promoted_to && rid(r.promoted_to)),
           field("Answered by", r.answered_by && rid(r.answered_by)),
@@ -275,90 +305,209 @@ function record(id) {
           field("Requirements", links(r.requirements)),
           field("Used by", links(usedBy[id])),
           field("Changing this affects", links(r.downstream))),
-        h("p", {},
-          h("a", { class: "btn ghost", href: `#/graph?focus=${id}` }, "Show in graph"), " ",
+        h("p", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px" },
+          h("a", { class: "btn ghost", href: `#/graph?focus=${id}` }, "Show in graph"),
           h("a", { class: "btn ghost", href: gh(`edit/main/${r.path}`), target: "_blank", rel: "noopener" }, "Edit on GitHub")))));
 }
 
 function graph(params) {
-  const wrap = h("div", { class: "graph" });
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const NS = "http://www.w3.org/2000/svg";
+  const svgEl = (tag, attrs = {}) => {
+    const el = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    return el;
+  };
+  const wrap = h("div", { class: "graph", role: "group", "aria-label": "Record graph" });
+  // Two edge layers: the base layer sits under every card, the live layer (the selected lineage) sits above
+  // dimmed cards but below lit ones, so a highlighted path is never cut by a faded card. See the z-index tokens in styles.css.
+  const baseLayer = svgEl("svg", { class: "edges edges-base", "aria-hidden": "true", focusable: "false" });
+  const liveLayer = svgEl("svg", { class: "edges edges-live", "aria-hidden": "true", focusable: "false" });
+  const defs = svgEl("defs");
+  for (const kind of ["fact", "weak", "dep"]) {
+    const marker = svgEl("marker", { id: `arrow-${kind}`, viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" });
+    marker.append(svgEl("path", { d: "M 0 1.5 L 8 5 L 0 8.5 z", class: `arrow-${kind}` }));
+    defs.append(marker);
+  }
+
   const nodes = {};
+  const order = [];
   const edges = [];
+  const builtOn = (e) => prefix(e.from) === "SPC" && prefix(e.to) === "SPC";
   for (const r of data.records) {
     for (const from of upstream(r)) if (byId[from]) {
-      const weak = prefix(from) === "ASM" ? byId[from].status !== "validated"
+      const dep = prefix(from) === "SPC" && prefix(r.id) === "SPC";
+      const weak = !dep && (prefix(from) === "ASM" ? byId[from].status !== "validated"
         : prefix(from) === "QST" ? byId[from].status === "open"
-        : byId[from].status !== "active" && prefix(r.id) === "SPC";
-      edges.push({ from, to: r.id, weak });
+        : byId[from].status !== "active" && prefix(r.id) === "SPC");
+      edges.push({ from, to: r.id, weak, dep });
     }
   }
-  wrap.append(svg, ...PREFIXES.map((p) => h("div", { class: "col" }, h("h3", {}, LABELS[p]),
-    ofType(p).map((r) => (nodes[r.id] = h("button", { class: `node t-${p}`, title: r.title, onclick: () => select(r.id) },
-      h("div", { class: "node-head" }, h("span", { class: `rid t-${p}` }, r.id), badge(r.status)), h("div", {}, r.title)))))));
 
-  let selected = null;
-  const builtOn = (e) => prefix(e.from) === "SPC" && prefix(e.to) === "SPC";
+  let selected = null, hovered = null, query = "";
+
+  /** What a record rests on (up) and what a change to it affects (down). A spec built on another spec shows that spec, not its whole ground. */
   function lineage(id) {
-    const seen = new Set([id]);
-    const walk = (start, dir) => {
-      const todo = [start];
+    const walk = (dir) => {
+      const seen = new Set(), todo = [id];
       while (todo.length) {
         const cur = todo.pop();
         for (const e of edges) {
           const next = dir === "up" ? (e.to === cur && e.from) : (e.from === cur && e.to);
-          if (!next || seen.has(next)) continue;
+          if (!next || next === id || seen.has(next)) continue;
           seen.add(next);
-          // A spec built on another spec shows that spec, not its whole ground; otherwise every feature lights up everything.
           if (!(dir === "up" && builtOn(e))) todo.push(next);
         }
       }
+      return seen;
     };
-    walk(id, "up"); walk(id, "down");
-    return seen;
+    const up = walk("up"), down = walk("down");
+    return { id, up, down, all: new Set([id, ...up, ...down]) };
   }
-  function select(id) {
-    selected = selected === id ? null : id;
-    const keep = selected ? lineage(selected) : null;
-    for (const [nid, el] of Object.entries(nodes)) {
-      el.classList.toggle("dim", !!keep && !keep.has(nid));
-      el.classList.toggle("sel", nid === selected);
+  const current = () => { const id = selected || hovered; return id && byId[id] ? lineage(id) : null; };
+  const matchesOf = () => (query ? new Set(order.filter((id) => `${id} ${byId[id].title}`.toLowerCase().includes(query))) : null);
+  const EXCERPT = { REQ: "Statement", ASM: "Statement", FCT: "Statement", QST: "Question", SPC: "Purpose" };
+  const excerpt = (r) => section(r.body, EXCERPT[prefix(r.id)]).replace(/\s+/g, " ").trim();
+
+  // The bar keeps a fixed shape (main row, actions, two-line excerpt) so previewing never shifts the graph under the pointer.
+  function renderStatus(lin, matches) {
+    const text = lin ? excerpt(byId[lin.id]) : "";
+    const ex = h("p", { class: "graph-bar-excerpt", ...(text ? { html: inline(text) } : {}) });
+    if (!lin) {
+      bar.classList.remove("active");
+      bar.replaceChildren(
+        h("div", { class: "graph-bar-main muted" }, matches
+          ? (matches.size ? `${matches.size} match${matches.size > 1 ? "es" : ""} · press Enter to select the first` : "No records match.")
+          : "Hover or focus a record to preview its lineage · click to select it · Esc to clear."),
+        h("div", { class: "graph-bar-actions" }), ex);
+      return;
     }
-    info.replaceChildren(selected
-      ? h("span", {}, "Lineage of ", rid(selected), ": what it rests on and what it affects. ",
-          byId[selected].depends_on?.length ? ["It builds on ", idList(byId[selected].depends_on), "; click that to see its ground. "] : "",
-          h("a", { href: `#/record/${selected}` }, "Open record →"))
-      : "Click a record to trace its lineage.");
-    draw(keep);
+    const r = byId[lin.id];
+    bar.classList.add("active");
+    bar.replaceChildren(
+      h("div", { class: "graph-bar-main" },
+        h("span", { class: `rid t-${prefix(r.id)}` }, r.id), badge(r.status), h("strong", {}, r.title),
+        h("span", { class: "muted" }, `↑ rests on ${lin.up.size} · ↓ affects ${lin.down.size}`),
+        selected ? null : h("span", { class: "muted" }, "· preview")),
+      h("div", { class: "graph-bar-actions" },
+        selected && r.depends_on?.length ? h("span", { class: "muted" }, "Builds on ",
+          r.depends_on.map((d, i) => [i ? " " : "", h("button", { type: "button", class: "chip-inline", onclick: () => select(d, true) }, d)])) : null,
+        selected ? h("a", { class: "btn ghost", href: `#/record/${r.id}` }, "Open record →") : null,
+        selected ? h("button", { type: "button", class: "btn ghost", onclick: () => select(null) }, "Clear (Esc)") : null),
+      ex);
   }
-  function draw(keep) {
+
+  function applyHighlight() {
+    const lin = current();
+    const matches = matchesOf();
+    wrap.classList.toggle("focus", !!(lin || matches));
+    for (const [nid, el] of Object.entries(nodes)) {
+      const lit = lin ? lin.all.has(nid) : !!matches && matches.has(nid);
+      el.classList.toggle("lit", lit);
+      el.classList.toggle("dim", lin ? !lit : !!matches && !lit);
+      el.classList.toggle("up", !!lin && lin.up.has(nid));
+      el.classList.toggle("down", !!lin && lin.down.has(nid));
+      el.classList.toggle("sel", nid === selected);
+      el.classList.toggle("match", !lin && !!matches && matches.has(nid));
+      el.setAttribute("aria-pressed", String(nid === selected));
+    }
+    renderStatus(lin, matches);
+    draw(lin, matches);
+  }
+
+  /** Click toggles a selection; `reveal` (chips, search, deep links) always selects and scrolls the card into view. */
+  function select(id, reveal = false) {
+    const toggledOff = id && selected === id && !reveal;
+    selected = !id || toggledOff ? null : id;
+    hovered = toggledOff ? id : null;
+    applyHighlight();
+    if (selected && reveal) nodes[selected].scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  function preview(id) {
+    if (selected || hovered === id) return;
+    hovered = id;
+    applyHighlight();
+  }
+
+  const columns = PREFIXES.map((p) => {
+    const items = ofType(p);
+    return h("div", { class: "col" },
+      h("h3", {}, LABELS[p], " ", h("span", { class: "muted" }, items.length)),
+      items.map((r) => {
+        order.push(r.id);
+        return (nodes[r.id] = h("button", {
+          type: "button", class: `node t-${p}`, "aria-pressed": "false", "aria-label": `${r.id}, ${r.status}: ${r.title}`,
+          onclick: () => select(r.id),
+          onmouseenter: () => preview(r.id), onmouseleave: () => preview(null),
+          onfocus: () => preview(r.id), onblur: () => preview(null),
+        }, h("div", { class: "node-head" }, h("span", { class: `rid t-${p}` }, r.id), badge(r.status)), h("div", {}, r.title)));
+      }));
+  });
+  wrap.append(baseLayer, ...columns, liveLayer);
+
+  function draw(lin, matches = null) {
     const box = wrap.getBoundingClientRect();
-    svg.replaceChildren(...edges.map((e) => {
+    if (!box.width) return;
+    const active = lin ? lin.all : matches;
+    const base = [], live = [];
+    for (const e of edges) {
       const a = nodes[e.from].getBoundingClientRect(), b = nodes[e.to].getBoundingClientRect();
       const y1 = a.top + a.height / 2 - box.top, y2 = b.top + b.height / 2 - box.top;
       let d;
-      if (prefix(e.from) === prefix(e.to)) { // spec builds on spec: loop out to the right
+      if (e.dep) { // spec builds on spec: loop through the padded gutter right of the Specs column
         const x = a.right - box.left;
-        d = `M${x},${y1} C${x + 40},${y1} ${x + 40},${y2} ${x},${y2}`;
+        d = `M${x},${y1} C${x + 38},${y1} ${x + 38},${y2} ${x + 3},${y2}`;
       } else {
-        const x1 = a.right - box.left, x2 = b.left - box.left, mid = (x1 + x2) / 2;
+        const x1 = a.right - box.left, x2 = b.left - box.left - 3, mid = (x1 + x2) / 2;
         d = `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`;
       }
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", d);
-      path.setAttribute("class", `edge${e.weak ? " weak" : ""}${keep && !(keep.has(e.from) && keep.has(e.to)) ? " dim" : ""}`);
-      return path;
-    }));
+      const kind = e.dep ? "dep" : e.weak ? "weak" : "fact";
+      const on = !!active && active.has(e.from) && active.has(e.to);
+      (on ? live : base).push(svgEl("path", { d, class: `edge edge-${kind}${on ? " on" : ""}`, "marker-end": `url(#arrow-${kind})` }));
+    }
+    baseLayer.replaceChildren(defs, ...base);
+    liveLayer.replaceChildren(...live);
   }
-  const info = h("p", { class: "muted" });
+
+  const search = h("ui-input", { type: "search", class: "graph-search", placeholder: "Find a record…", "aria-label": "Find a record in the graph" });
+  search.addEventListener("ui-input", (e) => { query = (e.detail.value || "").trim().toLowerCase(); applyHighlight(); });
+  search.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      const m = matchesOf();
+      const first = m && order.find((id) => m.has(id));
+      if (first) select(first, true);
+    }
+    if (ev.key === "Escape" && search.value) ev.stopPropagation(); // the browser clears the field; keep the selection
+  });
+
+  const bar = h("div", { class: "graph-bar", "aria-live": "polite" });
   main.append(h("h1", {}, "Graph"),
-    h("div", { class: "legend" },
-      h("span", {}, h("i"), "rests on a fact / active requirement"),
-      h("span", {}, h("i", { class: "weak" }), "rests on an open assumption or question / unfinished requirement")),
-    info, h("div", { class: "graph-wrap" }, wrap));
-  redraw = () => draw(selected ? lineage(selected) : null);
+    h("p", { class: "muted lede" }, "Arrows run from what a record rests on to what rests on it. Select a record to bring its lineage forward; everything else steps back."),
+    h("div", { class: "graph-toolbar-sticky" },
+      h("div", { class: "graph-toolbar glass" },
+        h("div", { class: "graph-toolbar-row" }, search,
+          h("div", { class: "legend" },
+            h("span", {}, h("i"), "grounded"),
+            h("span", {}, h("i", { class: "weak" }), "open assumption or question"),
+            h("span", {}, h("i", { class: "dep" }), "spec builds on spec"),
+            h("span", {}, "↑ rests on · ↓ affects"))),
+        bar)),
+    h("div", { class: "graph-wrap" }, wrap));
+
+  redraw = () => draw(current(), matchesOf());
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => (wrap.isConnected ? redraw?.() : ro.disconnect()));
+    ro.observe(wrap);
+  }
+  const onKey = (ev) => {
+    if (!wrap.isConnected) return removeEventListener("keydown", onKey);
+    if (ev.key !== "Escape") return;
+    if (selected) select(null);
+    else if (query) { search.value = ""; query = ""; applyHighlight(); }
+  };
+  addEventListener("keydown", onKey);
+
   const focus = params.get("focus");
-  requestAnimationFrame(() => (focus && byId[focus] ? select(focus) : select(null)));
+  requestAnimationFrame(() => (focus && byId[focus] ? select(focus, true) : applyHighlight()));
 }
 
 // ---------- capture ----------
@@ -382,8 +531,9 @@ const CAPTURES = {
     ],
     required: ["title", "statement", "because"],
     build(v) {
-      const shaky = (v.because || []).some((id) => prefix(id) === "ASM");
-      return { status: shaky ? "provisional" : "active", meta: { because: `[${(v.because || []).join(", ")}]` },
+      const because = v.because || [];
+      const shaky = !because.length || because.some((id) => prefix(id) === "ASM");
+      return { status: shaky ? "provisional" : "active", meta: { because: `[${because.join(", ")}]` },
         sections: { Statement: v.statement, Acceptance: v.acceptance } };
     },
   },
@@ -492,28 +642,40 @@ function capture(kind, params) {
   if (kind === "fact" && byId[params.get("promote")]) values.promoted_from = params.get("promote");
   if (byId[params.get("answers")] && fields.some((f) => f.key === "answers")) values.answers = params.get("answers");
   const id = nextId(def.prefix);
-  const preview = h("pre", { class: "preview" });
+  const preview = h("ui-code-block", { language: "markdown" });
   const submit = h("a", { class: "btn", target: "_blank", rel: "noopener" }, "Propose on GitHub");
-  const status = h("div", { class: "note" });
+  const status = h("div", { class: "note", style: "margin-top:8px" });
   const followUp = h("div");
 
   function control(f) {
     const set = (val) => { values[f.key] = val; store.set(key, values); update(); };
     if (f.type === "checks") {
       return h("fieldset", { class: "field" }, h("legend", {}, f.label),
-        h("div", { class: "checks" }, f.options.length ? f.options.map((o) => h("label", {},
-          h("input", { type: "checkbox", checked: values[f.key].includes(o.value),
-            onchange: (e) => set(e.target.checked ? [...values[f.key], o.value] : values[f.key].filter((x) => x !== o.value)) }), o.label))
-          : h("span", { class: "muted" }, "Nothing to pick yet.")),
+        h("div", { class: "checks" }, f.options.length ? f.options.map((o) => {
+          const cb = h("ui-checkbox", {
+            value: o.value,
+            checked: values[f.key].includes(o.value),
+          }, o.label);
+          cb.addEventListener("ui-change", (e) => {
+            set(e.detail.checked ? [...values[f.key], o.value] : values[f.key].filter((x) => x !== o.value));
+          });
+          return cb;
+        }) : h("span", { class: "muted" }, "Nothing to pick yet.")),
         f.hint && h("small", {}, f.hint));
     }
     const fid = `f-${f.key}`;
-    const input = f.type === "textarea" ? h("textarea", { id: fid, rows: 4, placeholder: f.placeholder })
-      : f.type === "select" ? h("select", { id: fid }, f.options.map((o) => h("option", { value: o.value }, o.label)))
-      : h("input", { id: fid, type: f.type, placeholder: f.placeholder, ...(f.type === "number" ? { min: 0, max: 1, step: 0.05 } : {}) });
-    input.value = values[f.key];
-    input.addEventListener("input", () => set(input.value));
-    return h("div", { class: "field" }, h("label", { for: fid }, f.label), input, f.hint && h("small", {}, f.hint));
+    let input;
+    if (f.type === "textarea") {
+      input = h("ui-textarea", { id: fid, rows: "4", placeholder: f.placeholder || "", value: values[f.key], "aria-label": f.label });
+      input.addEventListener("ui-input", (e) => set(e.detail.value));
+    } else if (f.type === "select") {
+      input = h("ui-select", { id: fid, options: JSON.stringify(f.options), value: values[f.key], "aria-label": f.label });
+      input.addEventListener("ui-change", (e) => set(e.detail.value));
+    } else {
+      input = h("ui-input", { id: fid, type: f.type, placeholder: f.placeholder || "", value: values[f.key], "aria-label": f.label });
+      input.addEventListener("ui-input", (e) => set(e.detail.value));
+    }
+    return h("div", { class: "field" }, h("ui-label", { for: fid }, f.label), input, f.hint && h("small", {}, f.hint));
   }
 
   function update() {
@@ -536,17 +698,21 @@ function capture(kind, params) {
     followUp.replaceChildren(...[built.followUp].flat().filter(Boolean));
   }
 
+  const clearBtn = h("ui-button", { variant: "secondary", size: "md" }, "Clear");
+  clearBtn.addEventListener("ui-press", () => { store.del(key); route(); });
+
   main.append(
     h("h1", {}, `Capture: ${def.label}`),
     h("div", { class: "toolbar" }, Object.entries(CAPTURES).map(([k, d]) =>
-      h("a", { class: "chip", href: `#/capture/${k}`, "aria-pressed": String(k === kind) }, d.label))),
+      h("ui-chip", {
+        pressed: k === kind,
+        onclick: () => { location.hash = `#/capture/${k}`; },
+      }, d.label))),
     h("p", { class: "muted" }, def.intro),
     h("div", { class: "capture" },
       h("form", { onsubmit: (e) => e.preventDefault() }, fields.map(control)),
-      h("div", {}, h("div", { class: "field" }, h("label", {}, `Preview · ${id}`), preview),
-        h("p", {}, submit, " ",
-          h("button", { class: "btn ghost", type: "button", onclick: () => navigator.clipboard?.writeText(preview.textContent.split("\n\n").slice(1).join("\n\n")) }, "Copy"), " ",
-          h("button", { class: "btn ghost", type: "button", onclick: () => { store.del(key); route(); } }, "Clear")),
+      h("div", {}, h("div", { class: "field" }, h("ui-label", {}, `Preview · ${id}`), preview),
+        h("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px" }, submit, clearBtn),
         status, followUp)));
   update();
 }
@@ -555,29 +721,76 @@ function notFound() {
   main.append(h("h1", {}, "Not found"), h("p", {}, h("a", { href: "#/" }, "Back to the dashboard")));
 }
 
+// ---------- theme ----------
+function initTheme() {
+  const navbar = document.getElementById("navbar");
+  const saved = store.get("theme");
+  let mode = saved === "light" ? "light" : "dark";
+  const apply = (next) => {
+    mode = next === "light" ? "light" : "dark";
+    if (mode === "light") {
+      document.documentElement.dataset.theme = "light";
+      store.set("theme", "light");
+    } else {
+      delete document.documentElement.dataset.theme;
+      store.set("theme", "dark");
+    }
+    if (navbar) navbar.setAttribute("theme", mode);
+    requestAnimationFrame(() => redraw?.());
+  };
+  navbar?.addEventListener("ui-theme-change", (e) => apply(e.detail?.theme));
+  apply(mode);
+}
+
 // ---------- router ----------
+let booted = false;
+let lastSection = null;
+
 function route() {
   const [path, query = ""] = (location.hash.replace(/^#\/?/, "")).split("?");
   const [section = "", arg] = path.split("/");
   const params = new URLSearchParams(query);
-  redraw = null;
-  main.replaceChildren();
-  if (section === "") dashboard();
-  else if (section === "records") records(params);
-  else if (section === "record") record(decodeURIComponent(arg || ""));
-  else if (section === "graph") graph(params);
-  else if (section === "capture") capture(arg || "requirement", params);
-  else if (section === "tasks") tasksView();
-  else notFound();
-  document.querySelectorAll(".top nav a").forEach((a) => {
-    const on = a.dataset.route === section || (section === "record" && a.dataset.route === "records");
-    on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current");
-  });
-  document.title = `${main.querySelector("h1")?.textContent || "Workspace"} · Meta-Specs Lite`;
-  window.scrollTo({ top: 0 });
+  const changed = booted && lastSection !== section;
+  lastSection = section;
+
+  const render = () => {
+    redraw = null;
+    main.classList.toggle("wide", section === "graph");
+    main.replaceChildren();
+    if (section === "") dashboard();
+    else if (section === "records") records(params);
+    else if (section === "record") record(decodeURIComponent(arg || ""));
+    else if (section === "graph") graph(params);
+    else if (section === "capture") capture(arg || "requirement", params);
+    else if (section === "tasks") tasksView();
+    else notFound();
+    document.querySelectorAll(".top-nav a").forEach((a) => {
+      const on = a.dataset.route === section || (section === "record" && a.dataset.route === "records");
+      on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current");
+    });
+    const heading = main.querySelector("h1");
+    document.title = `${heading?.textContent || "Workspace"} · ASDLC Meta-Specs`;
+    window.scrollTo({ top: 0 });
+    return heading;
+  };
+
+  const focusHeading = () => {
+    const heading = main.querySelector("h1");
+    if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+  };
+
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (changed && document.startViewTransition && !reduce) {
+    const vt = document.startViewTransition(render);
+    vt.finished.finally(focusHeading);
+  } else {
+    render();
+    if (changed) focusHeading();
+  }
 }
 
 async function start() {
+  initTheme();
   try {
     const res = await fetch("data/index.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -594,10 +807,11 @@ async function start() {
   for (const r of data.records) for (const up of upstream(r)) (usedBy[up] ||= []).push(r.id);
   document.getElementById("repo-link").href = gh("");
   const all = tasks();
-  if (all.length) document.querySelector('.top nav a[data-route="tasks"]').append(h("span", { class: `count ${all.some((t) => t.level === "fix") ? "fix" : "test"}` }, all.length));
+  if (all.length) document.querySelector('.top-nav a[data-route="tasks"]')?.append(h("span", { class: `count ${all.some((t) => t.level === "fix") ? "fix" : "test"}` }, all.length));
   addEventListener("hashchange", route);
   addEventListener("resize", () => redraw?.());
   route();
+  booted = true;
 }
 
 start();
