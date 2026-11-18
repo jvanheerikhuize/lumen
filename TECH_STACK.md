@@ -1,7 +1,8 @@
 # Lumen — Technology Stack Reference
 
-This document lives **outside** the epistemic specification corpus (`records/`) so that all assumptions (`ASM`), facts (`FCT`), questions (`QST`), requirements (`REQ`), and specifications (`SPC`) remain 100% technology-stack-neutral (`python3 tools/spec.py check --strict`).
+This document lives **outside** the epistemic specification corpus (`.specs/records/`) so that all assumptions (`ASM`), facts (`FCT`), questions (`QST`), requirements (`REQ`), and specifications (`SPC`) remain 100% technology-stack-neutral.
 
+Spec-Blueprint: asdlc-meta-specs@latest
 Design-System: asdlc-meta-designsystem@latest
 
 ---
