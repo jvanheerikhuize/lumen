@@ -18,15 +18,30 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install pyyaml
-      - run: python3 tools/spec.py check --strict
-      - run: python3 tools/spec.py index
+      - name: Fetch Spec-Blueprint and build Pages workspace
+        run: |
+          VER=$(grep -i '^Spec-Blueprint:' TECH_STACK.md | sed -E 's/.*asdlc-meta-specs@([A-Za-z0-9._-]+).*/\1/' || true)
+          VER=${VER:-latest}
+          BASE_URL="https://jvanheerikhuize.github.io/asdlc-meta-specs/${VER}"
+          curl -fsSL "${BASE_URL}/tools/spec.py" -o /tmp/spec.py
+          python3 /tmp/spec.py --root . check --strict
+          if [ -f site/index.html ]; then
+            TARGET="site/specs"
+          else
+            TARGET="site"
+          fi
+          mkdir -p "${TARGET}"
+          for f in index.html app.js styles.css; do
+            curl -fsSL "${BASE_URL}/site/${f}" -o "${TARGET}/${f}"
+          done
+          python3 /tmp/spec.py --root . index --out "${TARGET}/data/index.json"
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
@@ -38,4 +53,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4

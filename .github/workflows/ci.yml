@@ -12,12 +12,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -27,4 +27,10 @@ jobs:
       - run: go vet ./cmd/... ./internal/... ./web/...
       - run: npm test
       - run: go build -o bin/lumen ./cmd/lumen
-      - run: python3 tools/spec.py check --strict
+      - name: Validate epistemic specification records via Spec-Blueprint
+        run: |
+          pip install pyyaml
+          VER=$(grep -i '^Spec-Blueprint:' TECH_STACK.md | sed -E 's/.*asdlc-meta-specs@([A-Za-z0-9._-]+).*/\1/' || true)
+          VER=${VER:-latest}
+          curl -fsSL "https://jvanheerikhuize.github.io/asdlc-meta-specs/${VER}/tools/spec.py" -o /tmp/spec.py
+          python3 /tmp/spec.py --root . check --strict
