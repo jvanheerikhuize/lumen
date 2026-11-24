@@ -107,17 +107,16 @@ function IndexerSection({
 
   return (
     <div className="py-3">
-      <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-sm font-semibold text-white">
+      <Switch
+        label={label}
+        checked={Boolean(settings[enabledKey])}
+        onChange={(checked) => setSettings({ ...settings, [enabledKey]: checked })}
+      >
+        <span className="inline-flex items-center gap-2 py-2 font-semibold text-white">
           <Server className="w-4 h-4 text-zinc-400" />
           {label}
         </span>
-        <Switch
-          label={label}
-          checked={Boolean(settings[enabledKey])}
-          onChange={(checked) => setSettings({ ...settings, [enabledKey]: checked })}
-        />
-      </div>
+      </Switch>
       {settings[enabledKey] && (
         <div className="space-y-2 pt-3">
           <Input
