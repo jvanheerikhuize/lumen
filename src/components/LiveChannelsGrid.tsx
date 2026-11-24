@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { SelectDropdown, SelectOption } from '@/components/SelectDropdown';
 import { getFavoriteChannelIds, toggleFavoriteChannel } from '@/lib/watchProgress';
 import { filterKidsLiveChannels } from '@/lib/kidsFilter';
+import { Button, Chip } from '@/components/ds';
 
 interface LiveChannelsGridProps {
   onPlayChannel: (channel: LiveChannel, channelList?: LiveChannel[]) => void;
@@ -177,21 +178,16 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
       {/* Category filter chips */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
         {categories.map((cat) => (
-          <button
+          <Chip
             key={cat}
-            type="button"
-            onClick={() => {
+            pressed={category === cat}
+            onPress={() => {
               setCategory(cat);
               setLimit(PAGE);
             }}
-            className={`h-8 px-3.5 rounded-full inline-flex items-center justify-center text-xs font-semibold leading-none whitespace-nowrap transition-colors ${
-              category === cat
-                ? 'bg-white text-zinc-950 shadow-sm'
-                : 'bg-zinc-900/80 text-zinc-300 ring-1 ring-inset ring-white/10 hover:bg-zinc-800 hover:text-white'
-            }`}
           >
-            <span className="text-trim">{cat}</span>
-          </button>
+            {cat}
+          </Chip>
         ))}
       </div>
 
@@ -293,13 +289,9 @@ export const LiveChannelsGrid: React.FC<LiveChannelsGridProps> = ({ onPlayChanne
         )}
         {shown.length > limit && (
           <div className="flex justify-center pt-6">
-            <button
-              type="button"
-              onClick={() => setLimit((l) => l + PAGE)}
-              className="h-10 px-6 rounded-full inline-flex items-center justify-center bg-zinc-900/85 hover:bg-zinc-800 ring-1 ring-inset ring-white/12 text-sm font-semibold leading-none text-zinc-200 hover:text-white transition-colors"
-            >
-              <span className="text-trim">Show more ({shown.length - limit} left)</span>
-            </button>
+            <Button size="lg" onPress={() => setLimit((l) => l + PAGE)}>
+              Show more ({shown.length - limit} left)
+            </Button>
           </div>
         )}
         <p className="mt-8 text-[11px] text-zinc-600">

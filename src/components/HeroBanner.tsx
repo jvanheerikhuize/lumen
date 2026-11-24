@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Play, Info, Star, Shuffle, Heart } from 'lucide-react';
 import { MediaItem } from '@/types';
+import { Button } from '@/components/ds';
 
 interface HeroBannerProps {
   media: MediaItem | null;
@@ -116,20 +117,16 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
               <span className="text-trim">More info</span>
             </button>
             {onToggleLike && (
-              <button
-                type="button"
-                onClick={() => onToggleLike(media)}
+              <Button
+                size="lg"
+                className="ds-pill"
+                pressed={Boolean(isLiked)}
                 title={isLiked ? 'Remove from Liked' : 'Like this title (improves recommendations)'}
-                aria-label={isLiked ? 'Unlike title' : 'Like title'}
-                aria-pressed={isLiked}
-                className={`w-11 h-11 rounded-full inline-flex items-center justify-center backdrop-blur-xl ring-1 ring-inset active:scale-[0.97] transition-all shrink-0 ${
-                  isLiked
-                    ? 'bg-rose-500/25 text-rose-400 ring-rose-500/45 hover:bg-rose-500/35'
-                    : 'bg-zinc-900/75 hover:bg-zinc-800/90 text-white ring-white/15 hover:ring-white/25'
-                }`}
+                aria-label="Like title"
+                onPress={() => onToggleLike(media)}
               >
-                <Heart className={`w-4 h-4 shrink-0 ${isLiked ? 'fill-current' : ''}`} />
-              </button>
+                <Heart className={`w-4 h-4 shrink-0 ${isLiked ? 'fill-rose-400 text-rose-400' : ''}`} />
+              </Button>
             )}
             {onShuffle && (
               <button
