@@ -52,23 +52,60 @@ No accounts, cloud logins, or mandatory API keys required.
 
 ## Quick Start (Docker — Recommended)
 
-Run Lumen with `ffmpeg` pre-installed in a single lightweight Alpine container:
+Run Lumen with `ffmpeg` pre-installed in a single lightweight Alpine container using Docker Compose:
 
 ```bash
 docker compose up -d
 ```
 
-Or with `docker run`:
+Verify the container is running and healthy (detached mode `-d` returns immediately even if startup fails):
+
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+Then open **http://localhost:3000** (or `http://<your-lan-ip>:3000` from any TV, tablet, or phone on your home network).
+
+### Stopping & Managing the Container
+
+```bash
+# Stop the container (keeps the container and data volume)
+docker compose stop
+
+# Stop and remove the container and network (keeps your lumen_data volume)
+docker compose down
+
+# Stop and remove everything, including stored database/state
+docker compose down -v
+
+# Pull the latest image and restart (or add --build to build from local source)
+docker compose pull && docker compose up -d
+```
+
+### Alternative: `docker run`
 
 ```bash
 docker run -d \
   --name lumen \
   -p 3000:3000 \
+  -v lumen_data:/app/data \
   --restart unless-stopped \
   ghcr.io/jvanheerikhuize/lumen:latest
 ```
 
-Then open **http://localhost:3000** (or `http://<your-lan-ip>:3000` from any TV, tablet, or phone on your home network).
+To stop and remove a `docker run` container:
+
+```bash
+docker stop lumen
+docker rm lumen
+```
+
+> **Host bind mounts:** Lumen runs inside the container as UID `10001`. Both `compose.yaml` and the `docker run` example above use a named volume (`lumen_data`) so permissions work out of the box. If you switch to a host directory bind mount (such as `./data:/app/data`), create it and set ownership first so SQLite can write to it:
+>
+> ```bash
+> mkdir -p data && sudo chown -R 10001:10001 data
+> ```
 
 ---
 
