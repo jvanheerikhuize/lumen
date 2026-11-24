@@ -90,7 +90,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
+      // The innermost target: events from inputs inside web components are retargeted to their host.
+      const target = e.composedPath()[0] as HTMLElement | undefined;
       if (
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||

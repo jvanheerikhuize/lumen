@@ -342,3 +342,9 @@ input[type="range"].lumen-scrubber:focus-visible {
     }
   }
 }
+
+/* A design system button that fills its row. */
+.ds-block,
+.ds-block::part(button) {
+  width: 100%;
+}

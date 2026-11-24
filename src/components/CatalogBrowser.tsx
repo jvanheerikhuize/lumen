@@ -6,6 +6,7 @@ import { MediaItem } from '@/types';
 import { PosterCard, PosterSkeleton } from '@/components/PosterCard';
 import { SelectDropdown, SelectOption } from '@/components/SelectDropdown';
 import { KIDS_ANIME_GENRES, KIDS_CINEMETA_GENRES } from '@/lib/kidsFilter';
+import { Button, Chip } from '@/components/ds';
 
 type BrowseType = 'movie' | 'tv' | 'anime';
 type BrowseSource = 'top' | 'year' | 'trending' | 'popular' | 'season';
@@ -166,31 +167,20 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
       });
   };
 
-  const chip = (active: boolean) =>
-    `h-8 px-3.5 rounded-full inline-flex items-center justify-center text-xs font-semibold leading-none whitespace-nowrap transition-colors ${
-      active
-        ? 'bg-white text-zinc-950 shadow-sm'
-        : 'bg-zinc-900/80 text-zinc-300 ring-1 ring-inset ring-white/10 hover:bg-zinc-800 hover:text-white'
-    }`;
-
   return (
     <div className="space-y-6">
       {/* Popular / By year, plus the year picker */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex items-center p-1 rounded-full bg-zinc-900/85 ring-1 ring-inset ring-white/12">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Catalog">
           {sources.map((s) => (
-            <button
+            <Chip
               key={s.key}
-              type="button"
-              onClick={() => changeFilter(s.key, s.key === 'year' ? String(CURRENT_YEAR) : null)}
-              className={`h-8 px-4 rounded-full inline-flex items-center justify-center text-sm font-semibold leading-none transition-all ${
-                source === s.key
-                  ? 'bg-gradient-to-r from-rose-500 to-orange-400 text-white shadow-sm shadow-rose-950/50'
-                  : 'text-zinc-300 hover:text-white'
-              }`}
+              accent
+              pressed={source === s.key}
+              onPress={() => changeFilter(s.key, s.key === 'year' ? String(CURRENT_YEAR) : null)}
             >
-              <span className="text-trim">{s.label}</span>
-            </button>
+              {s.label}
+            </Chip>
           ))}
         </div>
         {source === 'year' && (
@@ -210,9 +200,9 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
       {showGenres && (
         <div className="flex flex-wrap gap-2">
           {[null, ...genres].map((g) => (
-            <button key={g ?? 'all'} type="button" onClick={() => changeFilter(source, g)} className={chip(effectiveGenre === g)}>
-              <span className="text-trim">{g ?? 'All'}</span>
-            </button>
+            <Chip key={g ?? 'all'} pressed={effectiveGenre === g} onPress={() => changeFilter(source, g)}>
+              {g ?? 'All'}
+            </Chip>
           ))}
         </div>
       )}
@@ -227,13 +217,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
       {!loading && error && (
         <div className="py-12 text-center space-y-3">
           <p className="text-sm text-rose-400">{error}</p>
-          <button
-            type="button"
-            onClick={items.length > 0 ? loadMore : retry}
-            className="h-9 px-5 rounded-full inline-flex items-center justify-center bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold leading-none text-white ring-1 ring-inset ring-white/15 transition-colors"
-          >
-            <span className="text-trim">Try again</span>
-          </button>
+          <Button onPress={items.length > 0 ? loadMore : retry}>Try again</Button>
         </div>
       )}
 
@@ -243,13 +227,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
 
       {!loading && !error && hasMore && (
         <div className="flex justify-center pt-2">
-          <button
-            type="button"
-            onClick={loadMore}
-            className="h-10 px-6 rounded-full inline-flex items-center justify-center bg-zinc-900/85 hover:bg-zinc-800 ring-1 ring-inset ring-white/12 text-sm font-semibold leading-none text-zinc-200 hover:text-white transition-colors"
-          >
-            <span className="text-trim">Show more</span>
-          </button>
+          <Button size="lg" onPress={loadMore}>Show more</Button>
         </div>
       )}
     </div>

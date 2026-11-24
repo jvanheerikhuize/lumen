@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Check, Plus, ShieldCheck, Trash2, Users } from 'lucide-react';
+import { Check, Plus, Trash2, Users } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 import { HouseholdMember, getMemberDisplayName } from '@/lib/watchProgress';
 import { PROFILE_BADGE_CLASSES } from '@/components/Navbar';
+import { Badge, Button, Input, Switch } from '@/components/ds';
 
 interface ProfileManagerModalProps {
   profiles: HouseholdMember[];
@@ -63,8 +64,7 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
       })
       .filter((p) => Boolean(p.id));
 
-  const handleAddMember = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddMember = () => {
     const trimmedName = newName.trim();
     if (!trimmedName) return;
     const baseSlug = trimmedName
@@ -141,15 +141,10 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-white text-sm truncate">{displayName}</span>
                         {isActive && (
-                          <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/35 text-[10px] font-semibold leading-none text-trim">
-                            Active
-                          </span>
+                          <Badge variant="accent">Active</Badge>
                         )}
                         {member.isKids && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/35 text-[10px] font-semibold leading-none text-trim">
-                            <ShieldCheck className="w-3 h-3 shrink-0" />
-                            Kids safe
-                          </span>
+                          <Badge variant="success">Kids safe</Badge>
                         )}
                       </div>
                       <p className="text-[11px] text-zinc-400 truncate mt-0.5">
@@ -160,53 +155,50 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
 
                   <div className="flex items-center gap-2 shrink-0">
                     {!isActive && (
-                      <button
-                        type="button"
-                        onClick={() => {
+                      <Button
+                        size="sm"
+                        onPress={() => {
                           const cleaned = normalizeDrafts(drafts);
                           onSaveProfiles(cleaned, deletedIds);
                           setDeletedIds([]);
                           onSwitchProfile(member.id);
                           onClose();
                         }}
-                        className="h-8 px-3 rounded-full inline-flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.15] text-xs font-semibold leading-none text-zinc-100 ring-1 ring-inset ring-white/12 transition-colors"
                       >
-                        <span className="text-trim">Switch to</span>
-                      </button>
+                        Switch to
+                      </Button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(member.id)}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onPress={() => handleDelete(member.id)}
                       disabled={drafts.length <= 1}
                       title={drafts.length <= 1 ? 'At least one profile must remain' : `Delete ${displayName}`}
                       aria-label={`Delete ${displayName}`}
-                      className="w-8 h-8 rounded-full inline-flex items-center justify-center bg-white/[0.06] hover:bg-red-500/20 text-zinc-400 hover:text-red-300 ring-1 ring-inset ring-white/10 disabled:opacity-35 disabled:pointer-events-none transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-medium text-zinc-400 mb-1">Nickname (shown in bar)</label>
-                    <input
-                      type="text"
+                    <p className="text-[11px] font-medium text-zinc-400 mb-1">Nickname (shown in bar)</p>
+                    <Input
+                      aria-label={`Nickname for ${member.name}`}
                       value={member.nickname || ''}
                       maxLength={24}
                       placeholder={member.name}
-                      onChange={(e) => updateDraft(member.id, { nickname: e.target.value })}
-                      className="w-full h-9 rounded-xl bg-zinc-900/90 ring-1 ring-inset ring-white/12 focus:ring-rose-500/60 px-3 text-sm text-white placeholder-zinc-500 outline-none"
+                      onChange={(nickname) => updateDraft(member.id, { nickname })}
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-zinc-400 mb-1">Profile name</label>
-                    <input
-                      type="text"
+                    <p className="text-[11px] font-medium text-zinc-400 mb-1">Profile name</p>
+                    <Input
+                      aria-label={`Profile name for ${displayName}`}
                       value={member.name}
                       maxLength={24}
-                      onChange={(e) => updateDraft(member.id, { name: e.target.value })}
-                      className="w-full h-9 rounded-xl bg-zinc-900/90 ring-1 ring-inset ring-white/12 focus:ring-rose-500/60 px-3 text-sm text-white placeholder-zinc-500 outline-none"
+                      onChange={(name) => updateDraft(member.id, { name })}
                     />
                   </div>
                 </div>
@@ -235,60 +227,42 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => updateDraft(member.id, { isKids: !member.isKids })}
-                    aria-pressed={Boolean(member.isKids)}
-                    className={`h-8 px-3 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold leading-none ring-1 ring-inset transition-all ${
-                      member.isKids
-                        ? 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/45'
-                        : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 ring-white/12'
-                    }`}
+                  <Switch
+                    label={`Kids account for ${displayName}`}
+                    checked={Boolean(member.isKids)}
+                    onChange={(isKids) => updateDraft(member.id, { isKids })}
                   >
-                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                    <span className="text-trim">{member.isKids ? 'Kids account: On' : 'Kids account: Off'}</span>
-                  </button>
+                    Kids account
+                  </Switch>
                 </div>
               </div>
             );
           })}
         </div>
 
-        <form onSubmit={handleAddMember} className="p-4 rounded-2xl bg-white/[0.03] ring-1 ring-inset ring-white/[0.08] space-y-3">
+        <div className="p-4 rounded-2xl bg-white/[0.03] ring-1 ring-inset ring-white/[0.08] space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">Add another profile</h3>
-            <button
-              type="button"
-              onClick={() => setNewIsKids((v) => !v)}
-              aria-pressed={newIsKids}
-              className={`h-7 px-2.5 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold leading-none ring-1 ring-inset transition-colors ${
-                newIsKids
-                  ? 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/45'
-                  : 'bg-zinc-900/80 text-zinc-300 ring-white/12 hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-trim">{newIsKids ? 'Kids profile' : 'Standard profile'}</span>
-            </button>
+            <Switch label="Kids account for new profile" checked={newIsKids} onChange={setNewIsKids}>
+              Kids account
+            </Switch>
           </div>
           <div className="grid sm:grid-cols-2 gap-2.5">
-            <input
-              type="text"
+            <Input
               value={newName}
               maxLength={24}
               placeholder={newIsKids ? 'Name (e.g. Kids, Leo)' : 'Name (e.g. Alex)'}
               aria-label="New profile name"
-              onChange={(e) => setNewName(e.target.value)}
-              className="h-9 rounded-xl bg-zinc-900/90 ring-1 ring-inset ring-white/12 focus:ring-rose-500/60 px-3 text-sm text-white placeholder-zinc-500 outline-none"
+              onChange={setNewName}
+              onEnter={handleAddMember}
             />
-            <input
-              type="text"
+            <Input
               value={newNickname}
               maxLength={24}
               placeholder="Nickname (optional)"
               aria-label="New profile nickname"
-              onChange={(e) => setNewNickname(e.target.value)}
-              className="h-9 rounded-xl bg-zinc-900/90 ring-1 ring-inset ring-white/12 focus:ring-rose-500/60 px-3 text-sm text-white placeholder-zinc-500 outline-none"
+              onChange={setNewNickname}
+              onEnter={handleAddMember}
             />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -311,37 +285,22 @@ export const ProfileManagerModal: React.FC<ProfileManagerModalProps> = ({
                 );
               })}
             </div>
-            <button
-              type="submit"
-              disabled={!newName.trim()}
-              className="h-9 px-4 rounded-full inline-flex items-center justify-center gap-1.5 bg-white/[0.12] hover:bg-white/[0.2] disabled:opacity-40 disabled:pointer-events-none text-xs font-semibold leading-none text-white ring-1 ring-inset ring-white/15 transition-colors"
-            >
+            <Button onPress={handleAddMember} disabled={!newName.trim()}>
               <Plus className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-trim">Add profile</span>
-            </button>
+              Add profile
+            </Button>
           </div>
-        </form>
+        </div>
 
         <div className="pt-2 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-3">
           <span className="text-xs text-zinc-400">
             {dirty || deletedIds.length > 0 ? 'You have unsaved profile changes' : 'All changes saved'}
           </span>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-9 px-4 rounded-full inline-flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.15] text-xs font-semibold leading-none text-zinc-200 transition-colors"
-            >
-              <span className="text-trim">Close</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleCommit}
-              disabled={!dirty && deletedIds.length === 0}
-              className="h-9 px-5 rounded-full inline-flex items-center justify-center bg-gradient-to-r from-rose-600 to-amber-600 hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none text-xs font-semibold leading-none text-white shadow-lg shadow-black/40 transition-all"
-            >
-              <span className="text-trim">Save changes</span>
-            </button>
+            <Button variant="ghost" onPress={onClose}>Close</Button>
+            <Button variant="primary" onPress={handleCommit} disabled={!dirty && deletedIds.length === 0}>
+              Save changes
+            </Button>
           </div>
         </div>
       </div>

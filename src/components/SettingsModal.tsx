@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  SlidersHorizontal, Check, Plus, Trash2, Server, RefreshCw, CheckCircle2, AlertCircle,
+  SlidersHorizontal, Check, Plus, Trash2, Server, CheckCircle2, AlertCircle,
   Film, Sparkles, CalendarClock, Tv, Captions, Radar, Database, Puzzle, RotateCcw,
 } from 'lucide-react';
 import { UserSettings } from '@/types';
@@ -10,6 +10,7 @@ import { DEFAULT_ADDON_URLS, cleanAddonUrls, isDefaultAddonList } from '@/lib/sc
 import { Modal } from './Modal';
 import { SelectDropdown, SelectOption } from './SelectDropdown';
 import { getPreferredSubtitleLang, setPreferredSubtitleLang } from '@/lib/subtitleLanguages';
+import { Badge, Button, Input, Switch } from '@/components/ds';
 
 const SUBTITLE_LANGUAGES: [string, string][] = [
   ['off', 'Off'], ['en', 'English'], ['nl', 'Dutch'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'],
@@ -39,9 +40,6 @@ interface IntegrationState {
   trackerCount: number;
 }
 
-const inputClass =
-  'w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500 font-mono';
-
 function SectionTitle({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
     <div className="space-y-0.5">
@@ -63,13 +61,7 @@ function SourceRow({
         <span className="block text-sm font-semibold text-white">{name}</span>
         <span className="block text-[11px] text-zinc-500 truncate">{provides}</span>
       </span>
-      <span
-        className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-          on ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-zinc-400'
-        }`}
-      >
-        {status}
-      </span>
+      <Badge variant={on ? 'success' : 'neutral'}>{status}</Badge>
     </li>
   );
 }
@@ -77,13 +69,14 @@ function SourceRow({
 type IndexerType = 'prowlarr' | 'jackett';
 
 function IndexerSection({
-  type, label, keyHint, settings, setSettings,
+  type, label, keyHint, settings, setSettings, onSave,
 }: {
   type: IndexerType;
   label: string;
   keyHint: string;
   settings: UserSettings;
   setSettings: (s: UserSettings) => void;
+  onSave: () => void;
 }) {
   const enabledKey = `${type}Enabled` as const;
   const urlKey = `${type}Url` as const;
@@ -114,46 +107,36 @@ function IndexerSection({
 
   return (
     <div className="py-3">
-      <label className="flex items-center justify-between gap-3 cursor-pointer">
+      <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2 text-sm font-semibold text-white">
           <Server className="w-4 h-4 text-zinc-400" />
           {label}
         </span>
-        <input
-          type="checkbox"
+        <Switch
+          label={label}
           checked={Boolean(settings[enabledKey])}
-          onChange={(e) => setSettings({ ...settings, [enabledKey]: e.target.checked })}
-          className="w-4 h-4 rounded accent-rose-500 cursor-pointer"
+          onChange={(checked) => setSettings({ ...settings, [enabledKey]: checked })}
         />
-      </label>
+      </div>
       {settings[enabledKey] && (
         <div className="space-y-2 pt-3">
-          <input
-            type="text"
+          <Input
             aria-label={`${label} URL`}
             value={settings[urlKey] || ''}
-            onChange={(e) => setSettings({ ...settings, [urlKey]: e.target.value })}
+            onChange={(value) => setSettings({ ...settings, [urlKey]: value })}
             placeholder={type === 'prowlarr' ? 'http://192.168.1.100:9696' : 'http://192.168.1.100:9117'}
-            className={inputClass}
+            onEnter={onSave}
           />
-          <input
+          <Input
             type="password"
             aria-label={`${label} API key`}
             value={settings[apiKeyKey] || ''}
-            onChange={(e) => setSettings({ ...settings, [apiKeyKey]: e.target.value })}
+            onChange={(value) => setSettings({ ...settings, [apiKeyKey]: value })}
             placeholder={keyHint}
-            className={inputClass}
+            onEnter={onSave}
           />
           <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={test}
-              disabled={testing}
-              className="h-8 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold leading-none text-zinc-200 inline-flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${testing ? 'animate-spin text-rose-500' : ''}`} />
-              <span className="text-trim">Test connection</span>
-            </button>
+            <Button size="sm" busy={testing} onPress={test}>Test connection</Button>
             {status && (
               <span className={`text-xs font-semibold flex items-center gap-1 ${status.success ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {status.success ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
@@ -208,8 +191,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     };
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = () => {
     localStorage.setItem('screentime_settings', JSON.stringify(settings));
     setPreferredSubtitleLang(settings.defaultSubtitleLang);
     setSaved(true);
@@ -251,7 +233,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           <p className="text-xs sm:text-sm text-zinc-400">Sources, stream addons and subtitles.</p>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-6">
+        <div className="space-y-6">
           {/* Built-in sources */}
           <section className="space-y-2">
             <SectionTitle hint="Free and open, no account or key needed.">Built-in sources & server</SectionTitle>
@@ -293,14 +275,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             <div className="flex items-end justify-between gap-3">
               <SectionTitle hint="Stremio addons searched for every title.">Stream addons</SectionTitle>
               {!isDefaultAddonList(settings.addonUrls) && (
-                <button
-                  type="button"
-                  onClick={() => setSettings({ ...settings, addonUrls: DEFAULT_ADDON_URLS })}
-                  className="h-7 px-2.5 rounded-lg text-[11px] font-semibold leading-none text-zinc-400 hover:text-white hover:bg-white/[0.06] inline-flex items-center justify-center gap-1 transition-colors"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => setSettings({ ...settings, addonUrls: DEFAULT_ADDON_URLS })}
                 >
                   <RotateCcw className="w-3 h-3 shrink-0" />
-                  <span className="text-trim">Reset</span>
-                </button>
+                  Reset
+                </Button>
               )}
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3 space-y-1.5">
@@ -308,38 +290,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 <div key={url} className="flex items-center gap-2 p-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs">
                   <Puzzle className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
                   <span className="font-mono text-zinc-300 truncate flex-1">{url.replace(/^https?:\/\//, '')}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveAddon(url)}
-                    aria-label={`Remove ${url}`}
-                    className="w-7 h-7 inline-flex items-center justify-center hover:bg-zinc-800 text-zinc-500 hover:text-red-400 rounded-lg transition-colors shrink-0"
-                  >
+                  <Button variant="ghost" size="sm" aria-label={`Remove ${url}`} onPress={() => handleRemoveAddon(url)}>
                     <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                  </button>
+                  </Button>
                 </div>
               ))}
               <div className="flex gap-2 pt-1">
-                <input
-                  type="text"
+                <Input
+                  className="flex-1"
+                  aria-label="Addon URL"
                   value={newAddonUrl}
-                  onChange={(e) => setNewAddonUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddAddon();
-                    }
-                  }}
+                  invalid={Boolean(addonError)}
+                  onChange={setNewAddonUrl}
+                  onEnter={handleAddAddon}
                   placeholder="https://… addon or manifest URL"
-                  className={inputClass}
                 />
-                <button
-                  type="button"
-                  onClick={handleAddAddon}
-                  className="h-9 px-3.5 bg-zinc-800 hover:bg-rose-600 text-white text-xs font-semibold leading-none rounded-xl inline-flex items-center justify-center gap-1.5 transition-colors shrink-0"
-                >
+                <Button onPress={handleAddAddon}>
                   <Plus className="w-3.5 h-3.5 shrink-0" />
-                  <span className="text-trim">Add</span>
-                </button>
+                  Add
+                </Button>
               </div>
               {addonError && <p className="text-[11px] text-rose-400">{addonError}</p>}
             </div>
@@ -355,6 +324,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 keyHint="Settings → General → API Key"
                 settings={settings}
                 setSettings={setSettings}
+                onSave={handleSave}
               />
               <IndexerSection
                 type="jackett"
@@ -362,6 +332,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 keyHint="API key, top right of the Jackett dashboard"
                 settings={settings}
                 setSettings={setSettings}
+                onSave={handleSave}
               />
             </div>
           </section>
@@ -386,20 +357,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             />
           </section>
 
-          <button
-            type="submit"
-            className="w-full h-11 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm leading-none shadow-lg shadow-rose-600/30 inline-flex items-center justify-center gap-2 transition-all"
-          >
-            {saved ? (
-              <>
-                <Check className="w-4 h-4 text-white shrink-0" />
-                <span className="text-trim">Saved</span>
-              </>
-            ) : (
-              <span className="text-trim">Save</span>
-            )}
-          </button>
-        </form>
+          <Button variant="primary" size="lg" className="ds-block" onPress={handleSave}>
+            {saved && <Check className="w-4 h-4 shrink-0" />}
+            {saved ? 'Saved' : 'Save'}
+          </Button>
+        </div>
       </div>
     </Modal>
   );

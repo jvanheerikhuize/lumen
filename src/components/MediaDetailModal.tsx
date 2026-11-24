@@ -8,6 +8,7 @@ import { SelectDropdown, SelectOption } from './SelectDropdown';
 import { rankSources } from '@/lib/streaming/pickSource';
 import { cleanAddonUrls, isDefaultAddonList } from '@/lib/scrapers/addonUrls';
 import { getEpisodeProgress, getMediaProgress, MOVIE_COMPLETION_RATIO } from '@/lib/watchProgress';
+import { Badge, Button } from '@/components/ds';
 
 function formatAirDate(airstamp?: string): string {
   if (!airstamp) return '';
@@ -251,13 +252,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
               <span className="text-trim">{loading ? 'Finding streams…' : best ? playLabel : 'No streams found'}</span>
             </button>
             {resumeSeconds > 0 && !loading && best && (
-              <button
-                type="button"
-                onClick={() => play(best, 0)}
-                className="h-11 inline-flex items-center justify-center gap-2 px-5 rounded-full text-sm font-semibold leading-none bg-zinc-900/85 ring-1 ring-inset ring-white/12 text-zinc-200 hover:bg-zinc-800 hover:text-white transition-all active:scale-[0.98]"
-              >
-                <span className="text-trim">Start over</span>
-              </button>
+              <Button size="lg" onPress={() => play(best, 0)}>Start over</Button>
             )}
             {onToggleLike && (
               <button
@@ -365,9 +360,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                     <span className={`min-w-7 text-sm font-mono ${active ? 'text-rose-400' : 'text-zinc-500'}`}>{ep.episodeNumber}</span>
                     <span className={`flex-1 truncate text-sm ${active ? 'text-white font-semibold' : 'text-zinc-300'}`}>{ep.name}</span>
                     {watched && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[11px] font-medium leading-none text-trim shrink-0">
-                        Watched
-                      </span>
+                      <Badge variant="success">Watched</Badge>
                     )}
                     {active && <Play className="w-4 h-4 text-rose-400 fill-rose-400 shrink-0" />}
                     {epRatio > 0.02 && epRatio < 0.9 && (

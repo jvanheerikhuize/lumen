@@ -46,6 +46,7 @@ import {
   syncStateFromServer,
   WatchProgressEntry,
 } from '@/lib/watchProgress';
+import { Button, Chip } from '@/components/ds';
 
 interface CatalogRow {
   key: string;
@@ -642,32 +643,22 @@ export default function Home() {
               {tasteGenres.map((g) => {
                 const active = taste.favoriteGenres.includes(g);
                 return (
-                  <button
-                    key={g}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => handleToggleFavoriteGenre(g)}
-                    className={`h-7 px-3 rounded-full inline-flex items-center justify-center text-xs font-medium leading-none transition-colors ${
-                      active
-                        ? 'bg-gradient-to-r from-rose-500 to-orange-400 text-white shadow-sm shadow-rose-950/50'
-                        : 'bg-white/[0.05] text-zinc-300 ring-1 ring-inset ring-white/[0.08] hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-trim">{g}</span>
-                  </button>
+                  <Chip key={g} accent pressed={active} onPress={() => handleToggleFavoriteGenre(g)}>
+                    {g}
+                  </Chip>
                 );
               })}
-              <button
-                type="button"
-                onClick={() => {
+              <Button
+                size="sm"
+                className="ml-auto"
+                onPress={() => {
                   const rerolled = recordDiscoveryEvent('reroll');
                   shuffleHome(rerolled);
                 }}
-                className="ml-auto h-7 px-3.5 rounded-full inline-flex items-center justify-center gap-1.5 bg-white/[0.07] hover:bg-white/15 text-xs font-medium leading-none text-zinc-200 hover:text-white ring-1 ring-inset ring-white/10 transition-colors"
               >
-                <Shuffle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                <span className="text-trim">Shuffle picks</span>
-              </button>
+                <Shuffle className="w-3.5 h-3.5 shrink-0" />
+                Shuffle picks
+              </Button>
             </div>
 
             {continueWatchingItems.length > 0 && (
