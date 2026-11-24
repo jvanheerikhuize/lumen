@@ -1,9 +1,12 @@
+/* Design tokens sit in the lowest layer so Tailwind's own --text-*, --radius-* and --shadow-* keep their values.
+   Every use below has a fallback: the player must work when this stylesheet is unreachable. */
+@import url("https://jvanheerikhuize.github.io/asdlc-meta-designsystem/latest/src/tokens/tokens.css") layer(design-tokens);
 @import "tailwindcss";
 
 /* The app is dark-only; keep the page (and native scrollbars) dark regardless of OS theme. */
 :root {
-  --background: #08080b;
-  --foreground: #ededed;
+  --background: var(--color-bg, #08080b);
+  --foreground: var(--color-fg, #ededed);
   --font-geist-sans: 'Geist', system-ui, -apple-system, sans-serif;
   --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   --font-bricolage: 'Bricolage Grotesque', 'Geist', system-ui, sans-serif;
@@ -25,8 +28,8 @@ html {
 body {
   /* A faint warm glow at the top of every page. */
   background:
-    radial-gradient(1200px 600px at 15% -10%, rgba(244, 63, 94, 0.08), transparent 60%),
-    radial-gradient(900px 500px at 90% -5%, rgba(251, 146, 60, 0.05), transparent 60%),
+    radial-gradient(1200px 600px at 15% -10%, var(--glow-rose, rgba(244, 63, 94, 0.08)), transparent 60%),
+    radial-gradient(900px 500px at 90% -5%, var(--glow-amber, rgba(251, 146, 60, 0.05)), transparent 60%),
     var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
@@ -180,3 +183,162 @@ input[type="range"].lumen-scrubber:focus-visible {
   border-radius: 9999px;
 }
 
+
+/* Video player controls. */
+@layer components {
+  .player-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 9999px;
+    color: var(--color-fg, #ededed);
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .player-btn:hover,
+  .player-btn[aria-expanded="true"] {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+  }
+  .player-btn-text {
+    width: auto;
+    min-width: 2.5rem;
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .player-btn-primary,
+  .player-btn-primary:hover {
+    background: #fff;
+    color: #08080b;
+  }
+  .player-btn-on,
+  .player-accent {
+    color: var(--color-accent, #f43f5e);
+  }
+  .player-success {
+    color: var(--color-success, #10b981);
+  }
+  .player-dot-info {
+    background: var(--color-info, #38bdf8);
+  }
+  .player-btn:focus-visible,
+  .player-item:focus-visible,
+  .player-chip:focus-visible,
+  .player-volume input:focus-visible {
+    outline: 2px solid var(--color-focus-ring, #f43f5e);
+    outline-offset: 2px;
+  }
+  .player-item:focus-visible {
+    outline-offset: -2px;
+  }
+  .player-time {
+    flex-shrink: 0;
+    min-width: 2.75rem;
+    font-family: var(--font-geist-mono);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--color-fg, #ededed);
+  }
+  .player-live {
+    margin-left: 0.5rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    background: var(--color-accent, #f43f5e);
+    color: var(--color-accent-fg, #08080b);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .player-panel {
+    position: absolute;
+    z-index: 30;
+    max-width: calc(100vw - 2rem);
+    max-height: min(24rem, calc(100dvh - 11rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-block: 0.375rem;
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--color-surface-elevated, #18181f) 95%, transparent);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  }
+  .player-panel-title {
+    padding: 0.5rem 0.875rem 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-fg-secondary, #a1a1aa);
+  }
+  .player-item {
+    display: flex;
+    width: 100%;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    text-align: left;
+    font-size: 0.8125rem;
+    color: var(--color-fg, #ededed);
+  }
+  .player-item:hover {
+    background: var(--color-card-hover, rgba(255, 255, 255, 0.07));
+  }
+  .player-item[aria-pressed="true"] {
+    font-weight: 600;
+    color: #fff;
+  }
+  .player-chip {
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-fg, #ededed);
+    background: var(--color-card, rgba(255, 255, 255, 0.04));
+  }
+  .player-chip:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+  .player-chip[aria-pressed="true"] {
+    background: var(--color-accent, #f43f5e);
+    color: var(--color-accent-fg, #08080b);
+    font-weight: 600;
+  }
+  .player-volume {
+    display: flex;
+    align-items: center;
+  }
+  .player-volume input {
+    width: 0;
+    height: 1.5rem;
+    margin: 0;
+    opacity: 0;
+    accent-color: var(--color-fg, #ededed);
+    cursor: pointer;
+    transition: width 220ms ease, opacity 120ms ease, margin 220ms ease;
+  }
+  @media (any-hover: hover) and (min-width: 40rem) {
+    .player-volume:hover input,
+    .player-volume:has(:focus-visible) input {
+      width: 5rem;
+      margin-inline: 0.25rem 0.5rem;
+      opacity: 1;
+    }
+  }
+  @media not (any-hover: hover) {
+    .player-volume input {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .player-btn,
+    .player-volume input {
+      transition: none;
+    }
+  }
+}
