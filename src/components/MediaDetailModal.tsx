@@ -252,23 +252,19 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
               <span className="text-trim">{loading ? 'Finding streams…' : best ? playLabel : 'No streams found'}</span>
             </button>
             {resumeSeconds > 0 && !loading && best && (
-              <Button size="lg" onPress={() => play(best, 0)}>Start over</Button>
+              <Button size="lg" className="ds-pill" onPress={() => play(best, 0)}>Start over</Button>
             )}
             {onToggleLike && (
-              <button
-                type="button"
-                onClick={() => onToggleLike(media)}
-                aria-pressed={isLiked}
+              <Button
+                size="lg"
+                className="ds-pill"
+                pressed={Boolean(isLiked)}
                 title={isLiked ? 'Remove from liked titles' : 'Add to liked titles'}
-                className={`h-11 inline-flex items-center justify-center gap-2 px-5 rounded-full text-sm font-semibold leading-none ring-1 ring-inset transition-all active:scale-[0.98] ${
-                  isLiked
-                    ? 'bg-rose-500/20 ring-rose-500/50 text-rose-200 hover:bg-rose-500/30'
-                    : 'bg-zinc-900/85 ring-white/12 text-zinc-200 hover:bg-zinc-800 hover:text-white'
-                }`}
+                onPress={() => onToggleLike(media)}
               >
                 <Heart className={`w-4 h-4 shrink-0 ${isLiked ? 'fill-rose-400 text-rose-400' : ''}`} />
-                <span className="text-trim">{isLiked ? 'Liked' : 'Like'}</span>
-              </button>
+                {isLiked ? 'Liked' : 'Like'}
+              </Button>
             )}
           </div>
           {!loading && best && (

@@ -32,13 +32,25 @@ interface ButtonProps {
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   busy?: boolean;
+  /** Makes this a toggle button. */
+  pressed?: boolean;
   title?: string;
   className?: string;
   'aria-label'?: string;
 }
 
-export function Button({ onPress, variant = 'secondary', size = 'md', disabled = false, busy = false, ...rest }: ButtonProps) {
-  return <ui-button {...rest} variant={variant} size={size} disabled={disabled} busy={busy} onui-press={onPress} />;
+export function Button({ onPress, variant = 'secondary', size = 'md', disabled = false, busy = false, pressed, ...rest }: ButtonProps) {
+  return (
+    <ui-button
+      {...rest}
+      variant={variant}
+      size={size}
+      disabled={disabled}
+      busy={busy}
+      aria-pressed={pressed === undefined ? undefined : pressed ? 'true' : 'false'}
+      onui-press={onPress}
+    />
+  );
 }
 
 interface ChipProps {
@@ -106,13 +118,10 @@ export function Input({ value, onChange, type = 'text', maxLength, invalid = fal
     <ui-input
       {...rest}
       type={type}
+      maxlength={maxLength}
       value={value}
       invalid={invalid}
-      onui-input={(e: CustomEvent<{ value: string }>) => {
-        const next = maxLength === undefined ? e.detail.value : e.detail.value.slice(0, maxLength);
-        if (next !== e.detail.value) (e.currentTarget as HTMLElement & { value: string }).value = next;
-        onChange(next);
-      }}
+      onui-input={(e: CustomEvent<{ value: string }>) => onChange(e.detail.value)}
       onKeyDown={(e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && onEnter) {
           e.preventDefault();

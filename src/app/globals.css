@@ -348,3 +348,8 @@ input[type="range"].lumen-scrubber:focus-visible {
 .ds-block::part(button) {
   width: 100%;
 }
+
+/* Pill shape, to sit beside the round playback buttons. */
+.ds-pill::part(button) {
+  border-radius: 9999px;
+}

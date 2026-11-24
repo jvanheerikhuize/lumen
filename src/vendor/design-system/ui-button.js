@@ -97,6 +97,17 @@ TEMPLATE.innerHTML = `
       color: var(--color-danger-fg, #08080b);
     }
 
+    /* Toggle button that is on */
+    :host([aria-pressed="true"]:not([variant="danger"])) button {
+      background: color-mix(in srgb, var(--color-accent, #f43f5e) 18%, transparent);
+      border-color: color-mix(in srgb, var(--color-accent, #f43f5e) 50%, transparent);
+      color: var(--color-fg, #ededed);
+    }
+
+    :host([aria-pressed="true"]:not([variant="danger"])) button:hover:not(:disabled):not([aria-busy="true"]) {
+      background: color-mix(in srgb, var(--color-accent, #f43f5e) 28%, transparent);
+    }
+
     /* Focus ring */
     button:focus-visible {
       outline: 2px solid var(--color-focus-ring, #f43f5e);
@@ -150,7 +161,7 @@ TEMPLATE.innerHTML = `
  * disabled, and busy state handling.
  */
 export class UiButton extends HTMLElement {
-  static observedAttributes = ['disabled', 'busy', 'type', 'variant', 'size', 'aria-label'];
+  static observedAttributes = ['disabled', 'busy', 'type', 'variant', 'size', 'aria-label', 'aria-pressed'];
 
   #btn;
 
@@ -219,6 +230,12 @@ export class UiButton extends HTMLElement {
       this.#btn.setAttribute('aria-label', ariaLabel);
     } else {
       this.#btn.removeAttribute('aria-label');
+    }
+    const pressed = this.getAttribute('aria-pressed');
+    if (pressed === null) {
+      this.#btn.removeAttribute('aria-pressed');
+    } else {
+      this.#btn.setAttribute('aria-pressed', String(pressed === 'true'));
     }
   }
 }

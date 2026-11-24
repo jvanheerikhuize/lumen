@@ -64,7 +64,7 @@ TEMPLATE.innerHTML = `
  */
 export class UiInput extends HTMLElement {
   static observedAttributes = [
-    'type', 'value', 'placeholder', 'disabled', 'readonly', 'required', 'invalid', 'name', 'aria-label',
+    'type', 'value', 'placeholder', 'disabled', 'readonly', 'required', 'invalid', 'name', 'maxlength', 'aria-label',
   ];
 
   #input;
@@ -143,6 +143,12 @@ export class UiInput extends HTMLElement {
     this.#input.setAttribute('aria-invalid', String(this.invalid));
     if (this.hasAttribute('value') && this.#input.value !== this.getAttribute('value')) {
       this.#input.value = this.getAttribute('value') ?? '';
+    }
+    const maxLength = this.getAttribute('maxlength');
+    if (maxLength === null) {
+      this.#input.removeAttribute('maxlength');
+    } else {
+      this.#input.setAttribute('maxlength', maxLength);
     }
     const ariaLabel = this.getAttribute('aria-label');
     if (ariaLabel) {
